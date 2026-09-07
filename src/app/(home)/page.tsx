@@ -12,6 +12,7 @@ import {
   type OverrideRow,
 } from "@/lib/attendance-util";
 import type { Lead } from "@/lib/sales-types";
+import AttendanceCalendar, { monthStart } from "@/components/attendance-calendar";
 
 type Announcement = {
   id: string;
@@ -42,6 +43,9 @@ export default function Home() {
   const [overrides, setOverrides] = useState<OverrideRow[]>([]);
 
   const today = todayJst();
+  const [calMonth, setCalMonth] = useState<string>(today.slice(0, 7));
+  // 日別上書きをどの日から読み込んであるか。カレンダーでそれより前の月に移動したら読み直す
+  const [attendanceFrom, setAttendanceFrom] = useState<string>(monthStart(today.slice(0, 7)));
 
   const formatAnnouncementDate = (a: Announcement): string => {
     const raw = (a.publishedAt || a.updatedAt || a.createdAt || "").trim();
@@ -99,7 +103,7 @@ export default function Home() {
   useEffect(() => {
     const loadAttendance = async () => {
       try {
-        const res = await fetch("/api/attendance", { cache: "no-store" });
+        const res = await fetch(`/api/attendance?from=${attendanceFrom}`, { cache: "no-store" });
         if (!res.ok) return;
         const data = (await res.json()) as { weekly?: WeeklyRow[]; overrides?: OverrideRow[] };
         if (Array.isArray(data.weekly)) setWeekly(data.weekly);
@@ -109,7 +113,21 @@ export default function Home() {
       }
     };
     void loadAttendance();
-  }, []);
+  }, [attendanceFrom]);
+
+  const changeCalMonth = (ym: string) => {
+    setCalMonth(ym);
+    const from = monthStart(ym);
+    if (from < attendanceFrom) setAttendanceFrom(from);
+  };
+
+  const schedulableMembers = useMemo(
+    () =>
+      members
+        .filter((m) => m.active && isSchedulableMember(m.name))
+        .map((m) => ({ id: m.id, name: m.name, iconUrl: m.iconUrl })),
+    [members]
+  );
 
   const membersById = useMemo(() => {
     const map = new Map<string, Member>();
@@ -154,16 +172,8 @@ export default function Home() {
 
   // 今日の出勤
   const attendanceToday = useMemo(
-    () =>
-      resolveForDate(
-        members
-          .filter((m) => m.active && isSchedulableMember(m.name))
-          .map((m) => ({ id: m.id, name: m.name, iconUrl: m.iconUrl })),
-        weekly,
-        overrides,
-        today
-      ),
-    [members, weekly, overrides, today]
+    () => resolveForDate(schedulableMembers, weekly, overrides, today),
+    [schedulableMembers, weekly, overrides, today]
   );
 
   // 現在時刻（分）。シフト表の「今」の縦ライン用。1分ごとに更新
@@ -454,6 +464,31 @@ export default function Home() {
               </div>
             </div>
           )}
+        </section>
+
+        {/* 出勤カレンダー（月） */}
+        <section>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">出勤カレンダー</h2>
+            <Link
+              href="/attendance"
+              className="text-[11px] font-semibold text-neutral-500 underline decoration-neutral-300 underline-offset-4 hover:text-neutral-800 dark:text-neutral-400"
+            >
+              出勤スケジュールを設定 ↗
+            </Link>
+          </div>
+          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+            誰がどの日に出勤するかの月間予定です。曜日の基本と日別の変更を合わせた結果を表示しています。
+          </p>
+          <div className="mt-3 rounded-2xl border border-neutral-200 bg-white/90 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
+            <AttendanceCalendar
+              month={calMonth}
+              members={schedulableMembers}
+              weekly={weekly}
+              overrides={overrides}
+              onMonthChange={changeCalMonth}
+            />
+          </div>
         </section>
       </div>
     </main>

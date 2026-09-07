@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { WEEKDAY_LABELS, todayJst, isSchedulableMember, type WeeklyRow, type OverrideRow } from "@/lib/attendance-util";
+import AttendanceCalendar, { monthStart, shiftMonth } from "@/components/attendance-calendar";
 
 type Member = { id: string; name: string; iconUrl?: string; active: boolean };
 
@@ -13,6 +14,9 @@ export default function AttendancePage() {
   const [weekly, setWeekly] = useState<WeeklyRow[]>([]);
   const [overrides, setOverrides] = useState<OverrideRow[]>([]);
   const [ovDate, setOvDate] = useState<string>(todayJst());
+  const [calMonth, setCalMonth] = useState<string>(todayJst().slice(0, 7));
+  // 日別上書きをどの日から読み込んであるか。カレンダーでそれより前の月に移動したら読み直す
+  const [loadedFrom, setLoadedFrom] = useState<string>(monthStart(shiftMonth(todayJst().slice(0, 7), -1)));
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -20,7 +24,7 @@ export default function AttendancePage() {
       try {
         const [mRes, aRes] = await Promise.all([
           fetch("/api/members", { cache: "no-store" }),
-          fetch("/api/attendance", { cache: "no-store" }),
+          fetch(`/api/attendance?from=${loadedFrom}`, { cache: "no-store" }),
         ]);
         if (mRes.ok) {
           const m = (await mRes.json()) as Member[];
@@ -35,7 +39,18 @@ export default function AttendancePage() {
         console.error("failed to load attendance", e);
       }
     })();
-  }, []);
+  }, [loadedFrom]);
+
+  const changeMonth = (ym: string) => {
+    setCalMonth(ym);
+    const from = monthStart(ym);
+    if (from < loadedFrom) setLoadedFrom(from);
+  };
+
+  const calendarMembers = useMemo(
+    () => members.map((m) => ({ id: m.id, name: m.name, iconUrl: m.iconUrl })),
+    [members]
+  );
 
   const flash = (m: string) => {
     setToast(m);
@@ -94,6 +109,28 @@ export default function AttendancePage() {
           </p>
         </header>
 
+        {/* 月カレンダー（誰がどの日に出勤するかの一覧） */}
+        <section className="rounded-2xl border border-neutral-200 bg-white/90 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
+          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">出勤カレンダー</h2>
+          <p className="mt-1 text-[11px] text-neutral-500">
+            曜日の基本と日別の変更を合わせた、実際の出勤予定です。日付を押すと下の「日別の変更」の日付が切り替わります。
+          </p>
+          <div className="mt-3">
+            <AttendanceCalendar
+              month={calMonth}
+              members={calendarMembers}
+              weekly={weekly}
+              overrides={overrides}
+              onMonthChange={changeMonth}
+              onSelectDate={(d) => {
+                setOvDate(d);
+                document.getElementById("daily-override")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              selectedDate={ovDate}
+            />
+          </div>
+        </section>
+
         {/* 曜日ごとの基本 */}
         <section className="rounded-2xl border border-neutral-200 bg-white/90 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">曜日ごとの基本出勤時刻</h2>
@@ -139,7 +176,7 @@ export default function AttendancePage() {
         </section>
 
         {/* 日別の上書き */}
-        <section className="rounded-2xl border border-neutral-200 bg-white/90 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
+        <section id="daily-override" className="scroll-mt-6 rounded-2xl border border-neutral-200 bg-white/90 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">日別の変更（休み・時間変更）</h2>
