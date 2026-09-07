@@ -146,6 +146,7 @@
 - **設計判断: 取り込みは誰でも押せる、登録・編集は管理者のみ。** 取り込みは追加・上書きだけで壊れないため。閲覧・記録は全員に開放（proxy の制限対象には入れない）
 - **設計判断: 型・定数は `approach-types.ts`（DB非依存）、DBアクセス・シート取得は `approach.ts`（サーバ専用）に分離**（ナーチャリング・出勤と同じ方針）
 - **DB**: `approach_industries` / `approach_lists` / `approach_companies` / `approach_actions`（`ensureApproachTables`、ON DELETE CASCADE）
+- **Google ドライブ上の CSV ファイル**（`drive.google.com/file/d/{id}/view`）のリンクも登録できる（`uc?export=download` で本体を取る）。こちらも「リンクを知っている全員（閲覧者）」共有が必要。xlsx は不可（CSV に保存し直すかスプレッドシートで開く）
 - **既知の制約**: シートの列名を変えると対応付けが外れるので、管理画面で「編集 → 読み込む → 列を選び直す」。1シート1タブ（gid付きURL）
 
 ### 2026-09-07（出勤カレンダー（月表示）を出勤スケジュールとホームに追加）

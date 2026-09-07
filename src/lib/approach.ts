@@ -39,15 +39,24 @@ export async function getLoginId(req: NextRequest): Promise<string | null> {
 /**
  * 共有URLを CSV 取得用URLに変える。
  *
- * 通常の共有URL（/spreadsheets/d/{id}/edit#gid=0）は export?format=csv に変換する。
- * 「ウェブに公開」のURL（/d/e/2PACX-.../pub?output=csv）はそのまま使う。
+ * - 通常の共有URL（/spreadsheets/d/{id}/edit#gid=0）は export?format=csv に変換する。
+ * - 「ウェブに公開」のURL（/d/e/2PACX-.../pub?output=csv）はそのまま使う。
+ * - Google ドライブに置いた CSV ファイル（drive.google.com/file/d/{id}/view）は
+ *   uc?export=download で本体を取る。スプレッドシートに変換しなくても登録できるようにするため。
  *
- * どちらも、シートが「リンクを知っている全員が閲覧可」か「ウェブに公開」でないと
+ * いずれも「リンクを知っている全員が閲覧可」か「ウェブに公開」でないと
  * Google のログイン画面（HTML）が返ってくる。
  */
 export function toCsvUrl(sheetUrl: string): string | null {
   const url = sheetUrl.trim();
   if (!url) return null;
+
+  const driveMatch =
+    url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9-_]+)/) ??
+    url.match(/drive\.google\.com\/(?:open|uc)\?(?:.*&)?id=([a-zA-Z0-9-_]+)/);
+  if (driveMatch) {
+    return `https://drive.google.com/uc?export=download&id=${driveMatch[1]}`;
+  }
 
   if (/\/spreadsheets\/d\/e\//.test(url)) {
     // 公開URL。output=csv が無ければ付ける
@@ -120,7 +129,11 @@ export type SheetData = { headers: string[]; rows: Record<string, string>[] };
 /** シートを取りに行き、見出し → 値 の配列にして返す。失敗時は日本語の Error を投げる */
 export async function fetchSheet(sheetUrl: string): Promise<SheetData> {
   const csvUrl = toCsvUrl(sheetUrl);
-  if (!csvUrl) throw new Error("スプレッドシートのURLとして読み取れません。共有URLをそのまま貼ってください");
+  if (!csvUrl) {
+    throw new Error(
+      "スプレッドシートのURLとして読み取れません。Google スプレッドシートの共有URLか、Google ドライブ上の CSV ファイルのリンクを貼ってください",
+    );
+  }
 
   let res: Response;
   try {
@@ -133,6 +146,12 @@ export async function fetchSheet(sheetUrl: string): Promise<SheetData> {
   if (!res.ok || contentType.includes("text/html")) {
     throw new Error(
       "スプレッドシートを読めませんでした。共有設定を「リンクを知っている全員（閲覧者）」にしてください",
+    );
+  }
+  // ドライブのファイルは CSV 以外（xlsx 等）も同じURL形式になる。中身で判定する
+  if (/spreadsheetml|officedocument|octet-stream/.test(contentType) && !contentType.includes("csv")) {
+    throw new Error(
+      "このファイルは CSV ではありません（Excel 形式など）。Google スプレッドシートで開いて共有するか、CSV で保存し直してください",
     );
   }
 

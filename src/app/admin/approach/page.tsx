@@ -394,7 +394,7 @@ export default function AdminApproachPage() {
                   <input
                     value={form.sheetUrl}
                     onChange={(e) => setForm((f) => ({ ...f, sheetUrl: e.target.value }))}
-                    placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=0"
+                    placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=0 または https://drive.google.com/file/d/…/view"
                     className={INPUT}
                   />
                   <button
@@ -406,7 +406,7 @@ export default function AdminApproachPage() {
                   </button>
                 </div>
                 <span className="mt-1 block text-[11px] text-neutral-400">
-                  タブが複数あるシートは、対象のタブを開いた状態のURL（gid付き）を貼ってください。
+                  タブが複数あるシートは、対象のタブを開いた状態のURL（gid付き）を貼ってください。Google ドライブに置いた CSV ファイルのリンクでも登録できます。
                 </span>
               </label>
 
