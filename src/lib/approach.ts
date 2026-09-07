@@ -148,14 +148,14 @@ export async function fetchSheet(sheetUrl: string): Promise<SheetData> {
       "スプレッドシートを読めませんでした。共有設定を「リンクを知っている全員（閲覧者）」にしてください",
     );
   }
-  // ドライブのファイルは CSV 以外（xlsx 等）も同じURL形式になる。中身で判定する
-  if (/spreadsheetml|officedocument|octet-stream/.test(contentType) && !contentType.includes("csv")) {
+  const text = await res.text();
+  // ドライブのファイルは CSV でも application/octet-stream で返るので Content-Type では判定できない。
+  // xlsx は ZIP なので先頭が "PK" になる。それで見分ける
+  if (text.startsWith("PK\u0003\u0004") || /spreadsheetml/.test(contentType)) {
     throw new Error(
       "このファイルは CSV ではありません（Excel 形式など）。Google スプレッドシートで開いて共有するか、CSV で保存し直してください",
     );
   }
-
-  const text = await res.text();
   const table = parseCsv(text);
   if (table.length === 0) throw new Error("シートが空です");
 
