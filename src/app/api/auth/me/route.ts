@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionToken } from "@/lib/auth-token";
+import { canViewAiTraining } from "@/lib/roles";
+import { readAiTrainingUnlocked } from "@/lib/ai-training";
 
 const COOKIE_NAME = "igos_session";
 
@@ -15,5 +17,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, role: null }, { status: 401 });
   }
 
-  return NextResponse.json({ ok: true, role: payload.role, loginId: payload.loginId ?? null });
+  const unlocked = await readAiTrainingUnlocked(payload.loginId);
+  return NextResponse.json({
+    ok: true,
+    role: payload.role,
+    loginId: payload.loginId ?? null,
+    aiTrainingUnlocked: canViewAiTraining(payload.role, unlocked),
+  });
 }

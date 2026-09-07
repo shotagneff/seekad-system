@@ -41,6 +41,9 @@ export async function ensureUsersTable(): Promise<void> {
   await pool.query(`ALTER TABLE igos_users ADD COLUMN IF NOT EXISTS team TEXT;`);
   await pool.query(`ALTER TABLE igos_users ADD COLUMN IF NOT EXISTS job_title TEXT;`);
   await pool.query(`ALTER TABLE igos_users ADD COLUMN IF NOT EXISTS icon_url TEXT;`);
+  // AI研修（/e-learning/ai-training）を見られるか。ユーザー管理の「AI研修解禁」チェック。
+  // 管理者はチェックに関係なく見られる（roles.ts の canViewAiTraining）
+  await pool.query(`ALTER TABLE igos_users ADD COLUMN IF NOT EXISTS ai_training_unlocked BOOLEAN NOT NULL DEFAULT FALSE;`);
 }
 
 // ---------------------------------------------------------------------------

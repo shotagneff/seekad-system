@@ -67,6 +67,19 @@ export function canViewRestricted(role: Role | string | null | undefined): boole
   return role === "admin" || role === "lead_access";
 }
 
+/**
+ * AI研修（動画研修の「AI研修」コース）を見られるか。
+ *
+ * ロールではなく、ユーザー管理の「AI研修解禁」チェック（igos_users.ai_training_unlocked）で
+ * 人ごとに開ける。管理者はチェックに関係なく見られる。
+ */
+export function canViewAiTraining(
+  role: Role | string | null | undefined,
+  aiTrainingUnlocked: boolean | null | undefined,
+): boolean {
+  return role === "admin" || aiTrainingUnlocked === true;
+}
+
 /** 管理メニュー（/admin/*）を使えるか */
 export function canManage(role: Role | string | null | undefined): boolean {
   return role === "admin";

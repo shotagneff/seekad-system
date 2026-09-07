@@ -22,6 +22,8 @@ type UserRow = {
   jobTitle?: string | null;
   iconUrl?: string | null;
   active: boolean;
+  /** AI研修を見られるか（「AI研修解禁」チェック） */
+  aiTrainingUnlocked?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -121,6 +123,7 @@ export default function UsersAdminPage() {
           jobTitle: patch.jobTitle ?? u.jobTitle ?? "",
           iconUrl: patch.iconUrl ?? u.iconUrl ?? "",
           active: patch.active ?? u.active,
+          aiTrainingUnlocked: patch.aiTrainingUnlocked ?? u.aiTrainingUnlocked ?? false,
         }),
       });
       if (!res.ok) throw new Error("Failed to update user");
@@ -333,6 +336,7 @@ export default function UsersAdminPage() {
                       )}
                       <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
                         権限: {ROLE_LABEL[u.role] ?? u.role} / {u.active ? "有効" : "停止中"}
+                        {u.aiTrainingUnlocked && " / AI研修解禁"}
                       </span>
                     </div>
 
@@ -404,6 +408,20 @@ export default function UsersAdminPage() {
                           disabled={loading}
                         />
                         <span>有効</span>
+                      </label>
+
+                      <label
+                        className="flex items-center gap-1 text-[11px] text-neutral-600 dark:text-neutral-400"
+                        title="チェックした人だけ動画研修の「AI研修」を見られます（管理者は常に見られます）"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={u.aiTrainingUnlocked === true}
+                          onChange={(e) => void updateUser(u, { aiTrainingUnlocked: e.target.checked })}
+                          className="h-3 w-3 rounded border-neutral-300 text-emerald-500 focus:ring-0"
+                          disabled={loading}
+                        />
+                        <span>AI研修解禁</span>
                       </label>
 
                       <button

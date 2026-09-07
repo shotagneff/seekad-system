@@ -182,6 +182,9 @@ type Props = {
   lockSections?: boolean;
 };
 
+/** ユーザー管理の「AI研修解禁」が必要なコース */
+const AI_COURSE_ID = "ai";
+
 const courses = [
   { id: "onboarding", title: "入社直後研修", subtitle: "基礎を学ぶ", icon: "📚", href: "/e-learning" },
   { id: "sales", title: "法人営業研修", subtitle: "営業スキルを磨く", icon: "💼", href: "/e-learning/sales-training" },
@@ -195,6 +198,25 @@ export function ELearningCourseView({ courseId, courseTitle, courseSubtitle, sho
   const [membersById, setMembersById] = useState<Map<string, Member>>(new Map());
   const [watchedSet, setWatchedSet] = useState<Set<string>>(new Set());
   const [achievementToast, setAchievementToast] = useState<string | null>(null);
+  // AI研修を見られるか。null = 確認中。管理者と「AI研修解禁」にチェックのある人だけ true
+  const [aiUnlocked, setAiUnlocked] = useState<boolean | null>(null);
+  const aiLocked = courseId === AI_COURSE_ID && aiUnlocked === false;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        const data = res.ok ? ((await res.json()) as { aiTrainingUnlocked?: boolean }) : null;
+        if (!cancelled) setAiUnlocked(data?.aiTrainingUnlocked === true);
+      } catch {
+        if (!cancelled) setAiUnlocked(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [highlightVideoId, setHighlightVideoId] = useState<string | null>(null);
   const [section2Checklist, setSection2Checklist] = useState({
     googleFormSubmitted: false,
@@ -630,28 +652,46 @@ export function ELearningCourseView({ courseId, courseTitle, courseSubtitle, sho
         {/* コース選択 */}
         {showCourseNav && (
           <nav className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {courses.map((c) => (
-              <div
-                key={c.id}
-                onClick={() => router.push(c.href)}
-                className={`cursor-pointer rounded-2xl border px-4 py-3 shadow-sm transition hover:shadow-md ${
-                  c.id === courseId
-                    ? "border-[#9e8d70] bg-[#9e8d70]/5"
-                    : "border-neutral-200 bg-white/90 hover:border-[#9e8d70] dark:border-neutral-800 dark:bg-neutral-900/80"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{c.icon}</span>
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{c.title}</p>
-                    <p className="text-[10px] text-neutral-500">{c.subtitle}</p>
+            {courses.map((c) => {
+              const locked = c.id === AI_COURSE_ID && aiUnlocked === false;
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => {
+                    if (!locked) router.push(c.href);
+                  }}
+                  title={locked ? "AI研修は未解禁です。管理者にユーザー管理の「AI研修解禁」を依頼してください" : undefined}
+                  className={`rounded-2xl border px-4 py-3 shadow-sm transition ${
+                    locked
+                      ? "cursor-not-allowed border-dashed border-neutral-200 bg-neutral-50 opacity-60 dark:border-neutral-800 dark:bg-neutral-900/40"
+                      : c.id === courseId
+                        ? "cursor-pointer border-[#9e8d70] bg-[#9e8d70]/5 hover:shadow-md"
+                        : "cursor-pointer border-neutral-200 bg-white/90 hover:border-[#9e8d70] hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900/80"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{locked ? "🔒" : c.icon}</span>
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{c.title}</p>
+                      <p className="text-[10px] text-neutral-500">{locked ? "未解禁" : c.subtitle}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </nav>
         )}
 
+        {aiLocked ? (
+          <SectionCard title="AI研修は未解禁です" description="このコースは、ユーザー管理で「AI研修解禁」にチェックのある方だけが視聴できます。">
+            <p className="text-sm text-neutral-600 dark:text-neutral-300">
+              視聴したい場合は、管理者にユーザー管理画面での解禁を依頼してください。
+            </p>
+          </SectionCard>
+        ) : aiUnlocked === null && courseId === AI_COURSE_ID ? (
+          <p className="text-[11px] text-neutral-500 dark:text-neutral-400">確認中...</p>
+        ) : (
+          <>
         <SectionCard
           title="動画研修の全体進捗"
           description="いままでに視聴した本数と、全コンテンツに対する完了率のサマリーです。"
@@ -912,6 +952,8 @@ export function ELearningCourseView({ courseId, courseTitle, courseSubtitle, sho
             </SectionCard>
           );
         })}
+          </>
+        )}
       </div>
     </main>
   );

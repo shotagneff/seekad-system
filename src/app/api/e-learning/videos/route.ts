@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { ensureElearningVideosTable } from "@/lib/schema";
+import { canViewAiTrainingFor } from "@/lib/ai-training";
 
+/** AI研修の動画は、ユーザー管理で「AI研修解禁」にした人（と管理者）にだけ返す */
+const AI_COURSE = "ai";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   await ensureElearningVideosTable();
+  const showAi = await canViewAiTrainingFor(req);
 
   const result = await pool.query(
     `SELECT
@@ -26,7 +30,8 @@ export async function GET() {
     ORDER BY section_id NULLS LAST, episode_label NULLS LAST, updated_at ASC;`
   );
 
-  return NextResponse.json(result.rows);
+  const rows = showAi ? result.rows : result.rows.filter((v: { course?: string | null }) => v.course !== AI_COURSE);
+  return NextResponse.json(rows);
 }
 
 export async function POST(req: NextRequest) {

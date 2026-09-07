@@ -19,6 +19,8 @@ type UserRow = {
   jobTitle?: string | null;
   iconUrl?: string | null;
   active: boolean;
+  /** AI研修を見られるか（ユーザー管理の「AI研修解禁」） */
+  aiTrainingUnlocked: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -36,6 +38,7 @@ export async function GET() {
       job_title AS "jobTitle",
       icon_url AS "iconUrl",
       active,
+      ai_training_unlocked AS "aiTrainingUnlocked",
       created_at AS "createdAt",
       updated_at AS "updatedAt"
     FROM ${USERS_TABLE}
@@ -60,11 +63,13 @@ export async function POST(req: NextRequest) {
     jobTitle?: string;
     iconUrl?: string;
     active?: boolean;
+    aiTrainingUnlocked?: boolean;
   };
 
   const loginId = String(body.loginId ?? "").trim();
   const displayName = String(body.displayName ?? "").trim() || null;
   const password = String(body.password ?? "").trim();
+  const aiTrainingUnlocked = body.aiTrainingUnlocked === true;
   const role: Role = toRole(body.role);
   const team = String(body.team ?? "").trim() || null;
   const jobTitle = String(body.jobTitle ?? "").trim() || null;
@@ -79,8 +84,8 @@ export async function POST(req: NextRequest) {
 
   await pool.query(
     `INSERT INTO ${USERS_TABLE}
-      (login_id, password_hash, display_name, role, team, job_title, icon_url, active, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+      (login_id, password_hash, display_name, role, team, job_title, icon_url, active, ai_training_unlocked, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
      ON CONFLICT (login_id) DO UPDATE SET
       password_hash = EXCLUDED.password_hash,
       display_name = EXCLUDED.display_name,
@@ -89,8 +94,9 @@ export async function POST(req: NextRequest) {
       job_title = EXCLUDED.job_title,
       icon_url = EXCLUDED.icon_url,
       active = EXCLUDED.active,
+      ai_training_unlocked = EXCLUDED.ai_training_unlocked,
       updated_at = NOW();`,
-    [loginId, passwordHash, displayName, role, team, jobTitle, iconUrl, active],
+    [loginId, passwordHash, displayName, role, team, jobTitle, iconUrl, active, aiTrainingUnlocked],
   );
 
   return NextResponse.json({ ok: true, loginId });
@@ -111,6 +117,7 @@ export async function PUT(req: NextRequest) {
     jobTitle?: string;
     iconUrl?: string;
     active?: boolean;
+    aiTrainingUnlocked?: boolean;
   };
 
   const loginId = String(body.loginId ?? "").trim();
@@ -125,6 +132,9 @@ export async function PUT(req: NextRequest) {
   const team = String(body.team ?? "").trim() || null;
   const jobTitle = String(body.jobTitle ?? "").trim() || null;
   const iconUrl = String(body.iconUrl ?? "").trim() || null;
+  // 送られてこなければ今の値を保つ（PW変更などで解禁が外れないように）
+  const aiTrainingUnlocked: boolean | null =
+    typeof body.aiTrainingUnlocked === "boolean" ? body.aiTrainingUnlocked : null;
 
   if (password) {
     const passwordHash = hashPassword(password);
@@ -137,9 +147,10 @@ export async function PUT(req: NextRequest) {
         job_title = $6,
         icon_url = $7,
         active = $8,
+        ai_training_unlocked = COALESCE($9, ai_training_unlocked),
         updated_at = NOW()
       WHERE login_id = $1;`,
-      [loginId, passwordHash, displayName, role, team, jobTitle, iconUrl, active],
+      [loginId, passwordHash, displayName, role, team, jobTitle, iconUrl, active, aiTrainingUnlocked],
     );
   } else {
     await pool.query(
@@ -150,9 +161,10 @@ export async function PUT(req: NextRequest) {
         job_title = $5,
         icon_url = $6,
         active = $7,
+        ai_training_unlocked = COALESCE($8, ai_training_unlocked),
         updated_at = NOW()
       WHERE login_id = $1;`,
-      [loginId, displayName, role, team, jobTitle, iconUrl, active],
+      [loginId, displayName, role, team, jobTitle, iconUrl, active, aiTrainingUnlocked],
     );
   }
 
