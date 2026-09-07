@@ -91,10 +91,15 @@ export async function generateKanaBatch(names: string[]): Promise<Map<string, st
 
   const text = res.content.find((b) => b.type === "text")?.text ?? "";
   const parsed = JSON.parse(text) as { readings: { name: string; kana: string | null }[] };
+  const clean = (k: unknown) => (typeof k === "string" && k.trim() ? k.trim() : null);
+  // 件数が一致すれば入力順で対応付ける。名前の文字列で突き合わせると、
+  // 互換漢字（例: 隆 U+F9DC）をモデルが通常の字体に正規化して返したときに取りこぼす。
+  if (parsed.readings.length === names.length) {
+    parsed.readings.forEach((r, i) => out.set(names[i], clean(r.kana)));
+    return out;
+  }
   for (const r of parsed.readings) {
-    if (typeof r.name !== "string") continue;
-    const kana = typeof r.kana === "string" ? r.kana.trim() : null;
-    out.set(r.name, kana && kana.length > 0 ? kana : null);
+    if (typeof r.name === "string") out.set(r.name, clean(r.kana));
   }
   return out;
 }

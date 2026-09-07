@@ -91,10 +91,14 @@ async function generateBatch(names) {
   const text = res.content.find((b) => b.type === "text")?.text ?? "";
   const parsed = JSON.parse(text);
   const out = new Map();
-  for (const r of parsed.readings) {
-    if (typeof r.name !== "string") continue;
-    const kana = typeof r.kana === "string" ? r.kana.trim() : null;
-    out.set(r.name, kana && kana.length > 0 ? kana : null);
+  const clean = (k) => (typeof k === "string" && k.trim() ? k.trim() : null);
+  // 件数が一致すれば入力順で対応付ける（互換漢字を正規化して返されても取りこぼさない）
+  if (parsed.readings.length === names.length) {
+    parsed.readings.forEach((r, i) => out.set(names[i], clean(r.kana)));
+  } else {
+    for (const r of parsed.readings) {
+      if (typeof r.name === "string") out.set(r.name, clean(r.kana));
+    }
   }
   return { out, usage: res.usage };
 }
