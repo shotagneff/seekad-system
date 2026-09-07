@@ -49,6 +49,7 @@
 |------|------|------|-------------|
 | ホーム（今日のアポ・今日の出勤・お知らせ） | `/` | 実装済み | API（/api/announcements・/api/sales・/api/attendance・/api/members） |
 | 日報・ホウレンソウ | `/daily-reports` | 実装済み | **localStorage のみ**（要改善） |
+| アプローチリスト | `/approach` | 実装済み（業界→都道府県→会社一覧、営業別サマリー） | DB（approach_* 4テーブル）。会社情報は Google スプレッドシート（CSV公開）から取り込み |
 | 反響リード | `/leads` | 実装済み | Callforce 側の Supabase（複製しない） |
 | ナーチャリング（メルマガ/MA） | `/nurturing` | 実装済み（購読者・リスト・キャンペーン・計測・配信停止・シナリオ） | DB（nurturing_* 8テーブル）+ Resend送信 |
 | 補助金・助成金 | `/subsidies` | 実装済み | `src/data/subsidies.ts` の台帳（手動更新）+ Claude API |
@@ -66,6 +67,7 @@
 |------|------|------|
 | ユーザー管理（ID/PW発行・権限設定・名簿） | `/admin/users` | 実装済み（DB）。**社員はここ1本で管理する**（旧「メンバー管理」を2026-09-02に統合） |
 | 動画研修管理（CRUD・進捗） | `/admin/e-learning` | 実装済み（DB） |
+| アプローチリスト管理（業界・スプレッドシート登録・列の対応付け） | `/admin/approach` | 実装済み（DB） |
 | お知らせ管理 | `/admin/announcements` | サイドバーのみ |
 | イベント管理 | `/admin/events` | サイドバーのみ |
 | パートナーマインドマップ管理 | `/admin/partners-mindmap` | サイドバーのみ |
@@ -130,6 +132,21 @@
 ---
 
 ## 7. 変更ログ（新しいものを上に書く）
+
+### 2026-09-07（アプローチリストを新設。業界×都道府県のスプレッドシートを取り込み、担当・手段・状況を記録）
+
+- **きっかけ**: 営業先リストが業界・都道府県ごとのスプレッドシートに散らばり、誰がどこまでアプローチしたか・今日何件動いたか・反応率が分からなかった
+- **画面**: `/approach`（業界一覧）→ `/approach/[industryId]`（都道府県一覧）→ `/approach/list/[listId]`（会社一覧）。会社一覧では **状況・手段・担当・メモをその場で変更**し、最後に動かした会社が上に来る。未対応は赤丸で目立たせ、「未対応 / 対応済み / アポ獲得」「担当」で絞れる
+- **営業別サマリー** `/approach/summary`: 今日・今週・今月・全期間で、営業ごとのアプローチ数（手段別）・反応数・反応率・アポ数・アポ獲得率と、直近の動き
+- **選択肢**: 手段＝未対応 / テレアポ / SNS DM / 手紙。状況＝未対応 / 不在 / 受付突破できず / 突破・アポ不可 / 返信あり / アポ獲得。定義は `src/lib/approach-types.ts` に集約
+- **集計の定義**: 「アプローチ1件」＝状況を未対応以外に変えた操作1回（approach_actions に1行）。反応＝突破・アポ不可 / 返信あり / アポ獲得。同じ会社に2回電話すれば2件と数える
+- **管理画面** `/admin/approach`: 業界の追加・並び替え、業界×都道府県ごとにスプレッドシートURLを登録。URLを貼って「読み込む」と1行目の見出しが出るので、会社名（必須）・電話・住所・HP・LinkedIn・先方担当・備考がどの列かを選ぶ（見出し名から推測した初期値を入れる）。対応付けしなかった列も `raw` に残し、会社一覧の「詳細」で見られる
+- **設計判断: シートは CSV 公開URL（`export?format=csv`）で読む。** Google API の認証情報を Vercel に置かずに済む。**シートは「リンクを知っている全員（閲覧者）」で共有する必要がある**。ログイン画面（HTML）が返ってきたらその旨のエラーを出す
+- **設計判断: 会社は「会社名＋電話番号」で同定する（`row_key`）。** 行番号にすると、シートに1行挿入しただけで全社の対応状況がずれる。再取り込みは会社情報だけ上書きし、担当・状況・履歴は残す。シートから消えた行は `removed_at` を立てて隠す（履歴は消さない）
+- **設計判断: 取り込みは誰でも押せる、登録・編集は管理者のみ。** 取り込みは追加・上書きだけで壊れないため。閲覧・記録は全員に開放（proxy の制限対象には入れない）
+- **設計判断: 型・定数は `approach-types.ts`（DB非依存）、DBアクセス・シート取得は `approach.ts`（サーバ専用）に分離**（ナーチャリング・出勤と同じ方針）
+- **DB**: `approach_industries` / `approach_lists` / `approach_companies` / `approach_actions`（`ensureApproachTables`、ON DELETE CASCADE）
+- **既知の制約**: シートの列名を変えると対応付けが外れるので、管理画面で「編集 → 読み込む → 列を選び直す」。1シート1タブ（gid付きURL）
 
 ### 2026-09-07（出勤カレンダー（月表示）を出勤スケジュールとホームに追加）
 
@@ -279,28 +296,28 @@
 ├── tsconfig.json                      TypeScript 設定。
 ├── eslint.config.mjs                  ESLint 設定。
 ├── postcss.config.mjs                 PostCSS 設定（Tailwind）。
-│
+    │
 ├── public/                            静的アセット（ブラウザから直接アクセスできるファイル）。
-│   └── images/                        画像ファイルをカテゴリ別に整理。
-│       ├── logo/
-│       │   └── logoseekad.png         SEEKAD ロゴ。
-│       ├── avatars/                   メンバーアバター画像（一元管理）。
-│       │   ├── avatar_hiraga.jpg
-│       │   ├── avatar_sato.png
-│       │   ├── avatar_seekad.jpeg
-│       │   └── avatar_takuma.jpg
-│       ├── icons/                     ナビゲーション・ページヘッダー用アイコン。
-│       │   ├── homeicon.png
-│       │   ├── daily-icon.svg
-│       │   ├── elearning-icon.png
-│       │   ├── ranking-icon.png
-│       │   ├── mindmap-icon.png
-│       │   └── sales-dashboard.png
-│       ├── banners/                   バナー・背景画像。
-│       │   └── training-banners/      研修バナー画像。
-│       └── docs/
-│           └── Document.png           ドキュメント用画像。
-│
+    │   └── images/                        画像ファイルをカテゴリ別に整理。
+    │       ├── logo/
+    │       │   └── logoseekad.png         SEEKAD ロゴ。
+    │       ├── avatars/                   メンバーアバター画像（一元管理）。
+    │       │   ├── avatar_hiraga.jpg
+    │       │   ├── avatar_sato.png
+    │       │   ├── avatar_seekad.jpeg
+    │       │   └── avatar_takuma.jpg
+    │       ├── icons/                     ナビゲーション・ページヘッダー用アイコン。
+    │       │   ├── homeicon.png
+    │       │   ├── daily-icon.svg
+    │       │   ├── elearning-icon.png
+    │       │   ├── ranking-icon.png
+    │       │   ├── mindmap-icon.png
+    │       │   └── sales-dashboard.png
+    │       ├── banners/                   バナー・背景画像。
+    │       │   └── training-banners/      研修バナー画像。
+    │       └── docs/
+    │           └── Document.png           ドキュメント用画像。
+    │
 └── src/                               アプリ本体のソースコード。
     ├── app/
     │   ├── layout.tsx                 ルートレイアウト。フォント・メタデータ設定。
@@ -351,6 +368,13 @@
     │   ├── forbidden/                 権限が足りない画面の案内（→ /forbidden）。
     │   │   └── page.tsx               proxy が rewrite で描画するので、URL は元のページのまま表示される。
     │   │
+    │   ├── approach/                  アプローチリスト（→ /approach）。全員が見られる。
+    │   │   ├── page.tsx               業界一覧。
+    │   │   ├── [industryId]/page.tsx  業界内の都道府県（＝リスト）一覧。
+    │   │   ├── list/[listId]/page.tsx 会社一覧。状況・手段・担当・メモをその場で更新、再取り込み。
+    │   │   ├── summary/page.tsx       営業別サマリー（期間別のアプローチ数・反応率・アポ獲得率・直近の動き）。
+    │   │   └── ui.tsx                 SubNav / Breadcrumb / Notice / readJson / shortDateTime。管理画面からも使う。
+    │   │
     │   ├── leads/                     反響リード（→ /leads）。
     │   │   ├── page.tsx               ダッシュボード／一覧のタブ切り替え。
     │   │   ├── Dashboard.tsx          反響の集計・分析パネル。
@@ -366,6 +390,7 @@
     │   ├── admin/                     管理者向けページ群。
     │   │   ├── users/                 ユーザー管理。ID/PW・権限に加え、名簿（チーム・役割）もここで登録する。
     │   │   ├── e-learning/            動画研修管理・進捗閲覧。
+    │   │   ├── approach/              アプローチリスト管理。業界の追加・並び替え、スプレッドシート登録と列の対応付け。
     │   │   ├── announcements/         お知らせ管理。
     │   │   ├── events/                イベント管理。
     │   │   ├── partners/              パートナー管理。
@@ -384,6 +409,10 @@
     │       ├── threads/               スレッド投稿・予約投稿。
     │       ├── users/                 ユーザー取得。
     │       ├── home/                  ホーム用カレンダーイベント。
+    │       ├── approach/              アプローチリスト。GET=業界＋リスト一覧。
+    │       │   ├── lists/[id]/        リスト1件＋会社一覧（+ sync/ でシートから再取り込み。誰でも可）。
+    │       │   ├── companies/[id]/    PATCH=担当・手段・状況・メモの更新（履歴を1行残す）。
+    │       │   └── summary/           営業別サマリー（?range=today|week|month|all）。
     │       ├── leads/                 反響リードの取得・更新（Callforce の Supabase を直接読む）。
     │       ├── nurturing/             ナーチャリング（メルマガ/MA）。
     │       │   ├── subscribers/       購読者の一覧＋集計・送客/追加・更新・削除。
@@ -397,7 +426,8 @@
     │       ├── subsidies/             補助金の提案。台帳で絞り込み → Claude API で提案文を生成。
     │       │   └── verify/            提案した制度が今も受付中かを公式ページで確認（web_fetch）。
     │       │                          提案とは別リクエスト。検証で待たせず、失敗しても提案は残す。
-    │       └── admin/                 管理者用API（members / users / e-learning / announcements / events）。
+    │       └── admin/                 管理者用API（users / e-learning / announcements / events）。
+    │           └── approach/          industries（業界CRUD）/ lists（リスト登録・更新・削除。登録時に取り込み）/ sheet-preview（見出しと先頭3行）。
     │
     ├── components/                    画面共通のUI部品。
     │   ├── panel.tsx                  パネル調UIの共通部品（ページ枠/カード/入力/KPI/ボタン）。全ページで使う。
@@ -415,6 +445,8 @@
     │   ├── db.ts                      PostgreSQL の接続プール（`DATABASE_URL`）。
     │   ├── schema.ts                  DB スキーマ定義。
     │   ├── callforce.ts               Callforce（AI架電）の反響リード取得・集計。
+    │   ├── approach-types.ts          アプローチリストの型・選択肢（手段・状況）・列の対応付け・都道府県。クライアント可。
+    │   ├── approach.ts                アプローチリストのDBアクセス・スプレッドシート取得（CSV公開URL）・取り込み・集計。サーバ専用。
     │   ├── attendance-util.ts         出勤の純粋ロジック（曜日→出勤者の確定 resolveForDate 等）。ブラウザ・サーバ共用。
     │   ├── attendance.ts              出勤スケジュールのDBアクセス（weekly / override の取得・保存）。サーバ専用。
     │   ├── sales-recordings.ts        アポ獲得管理リードの商談録音（Vercel Blob）のDBアクセス。サーバ専用。

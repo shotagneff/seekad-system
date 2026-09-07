@@ -71,6 +71,7 @@ export default function Sidebar() {
       <nav className="space-y-1">
         <SidebarLink href="/" label="ホーム" />
         <SidebarLink href="/daily-reports" label="日報・ホウレンソウ" />
+        <SidebarLink href="/approach" label="アプローチリスト" />
         <SidebarLink href="/leads" label="反響リード" locked={!canSeeRestricted} />
         <SidebarLink href="/appointments" label="アポ獲得管理" />
         <SidebarLink href="/nurturing" label="ナーチャリング" locked={!canSeeRestricted} />
@@ -88,6 +89,7 @@ export default function Sidebar() {
             </div>
             <SidebarLink href="/docs" label="ドキュメントゾーン（管理）" />
             <SidebarLink href="/admin/partners-mindmap" label="パートナー紹介マインドマップ（管理）" />
+            <SidebarLink href="/admin/approach" label="アプローチリスト（管理）" />
             <SidebarLink href="/admin/e-learning" label="動画研修ラーニング（管理）" />
             <SidebarLink href="/admin/announcements" label="お知らせ管理（管理）" />
             <SidebarLink href="/admin/events" label="イベント管理（管理）" />

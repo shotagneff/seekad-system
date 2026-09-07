@@ -480,6 +480,82 @@ export async function ensureNurturingTables(): Promise<void> {
 // ---------------------------------------------------------------------------
 // 全テーブル一括作成
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// approach（アプローチリスト）
+//
+//   approach_industries(業界) ─> approach_lists(業界×都道府県, スプレッドシート1枚)
+//     ─> approach_companies(シートの1行=会社。担当・手段・状況はここに持つ)
+//     ─> approach_actions(状況を変えるたびに1行。営業別サマリーの元データ)
+//
+// 会社の情報はシートから取り込むが、担当・手段・状況はシステム側だけが持つ。
+// 再取り込みで会社情報は上書きするが、対応の履歴は消さない（row_key で突き合わせる）。
+// ---------------------------------------------------------------------------
+export async function ensureApproachTables(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS approach_industries (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS approach_lists (
+      id TEXT PRIMARY KEY,
+      industry_id TEXT NOT NULL REFERENCES approach_industries(id) ON DELETE CASCADE,
+      prefecture TEXT NOT NULL,
+      name TEXT,
+      sheet_url TEXT NOT NULL,
+      column_map JSONB NOT NULL DEFAULT '{}'::jsonb,
+      last_synced_at TIMESTAMPTZ,
+      last_sync_error TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_approach_lists_industry ON approach_lists (industry_id);');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS approach_companies (
+      id TEXT PRIMARY KEY,
+      list_id TEXT NOT NULL REFERENCES approach_lists(id) ON DELETE CASCADE,
+      row_key TEXT NOT NULL,
+      company_name TEXT NOT NULL,
+      phone TEXT,
+      address TEXT,
+      website TEXT,
+      linkedin TEXT,
+      contact_name TEXT,
+      sheet_note TEXT,
+      raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+      assignee_id TEXT,
+      channel TEXT NOT NULL DEFAULT '未対応',
+      status TEXT NOT NULL DEFAULT '未対応',
+      memo TEXT,
+      last_action_at TIMESTAMPTZ,
+      last_action_by TEXT,
+      removed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (list_id, row_key)
+    );
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_approach_companies_list ON approach_companies (list_id);');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS approach_actions (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL REFERENCES approach_companies(id) ON DELETE CASCADE,
+      list_id TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      status TEXT NOT NULL,
+      memo TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_approach_actions_actor ON approach_actions (actor_id, created_at);');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_approach_actions_created ON approach_actions (created_at);');
+}
+
 export async function ensureAllTables(): Promise<void> {
   await ensureUsersTable();
   // members テーブルは igos_users へ統合済み（2026-09-02）。
@@ -494,4 +570,5 @@ export async function ensureAllTables(): Promise<void> {
   await ensureSalesCustomersTable();
   await ensureAttendanceTables();
   await ensureNurturingTables();
+  await ensureApproachTables();
 }

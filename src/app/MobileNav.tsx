@@ -79,6 +79,12 @@ export function MobileNav() {
             onClick={close}
           />
           <MobileLink
+            href="/approach"
+            label="アプローチリスト"
+            active={isActive("/approach")}
+            onClick={close}
+          />
+          <MobileLink
             href="/leads"
             label="反響リード"
             active={isActive("/leads")}
