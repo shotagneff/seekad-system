@@ -136,7 +136,13 @@ export function JapanTileMap({
           <stop offset="100%" stopColor={accent} />
         </linearGradient>
         <filter id={shadow} x="-20%" y="-20%" width="140%" height="150%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2.2" floodColor={accent} floodOpacity="0.35" />
+          <feDropShadow
+            dx="0"
+            dy="2"
+            stdDeviation="2.2"
+            floodColor={accent}
+            floodOpacity="0.35"
+          />
         </filter>
         <style>{`
           .jm-tile { transition: transform 140ms ease, filter 140ms ease; transform-box: fill-box; transform-origin: center; }
@@ -168,60 +174,91 @@ export function JapanTileMap({
         const active = !!tile;
         const isSelected = selected === name;
         const label = shortPrefecture(name);
-        const fontSize = label.length >= 4 ? 9.5 : label.length === 3 ? 11 : 12.5;
-        const fill = isSelected ? `url(#${gradSelected})` : active ? `url(#${gradActive})` : "#f4f4f6";
+        const fontSize =
+          label.length >= 4 ? 9.5 : label.length === 3 ? 11 : 12.5;
+        const fill = isSelected
+          ? `url(#${gradSelected})`
+          : active
+            ? `url(#${gradActive})`
+            : "#f4f4f6";
         const stroke = isSelected ? accent : active ? "#d9c9a6" : "#e8e9ec";
-        const textColor = isSelected ? "#ffffff" : active ? "#5a4a2f" : "#b8bcc3";
+        const textColor = isSelected
+          ? "#ffffff"
+          : active
+            ? "#5a4a2f"
+            : "#b8bcc3";
         const subColor = isSelected ? "rgba(255,255,255,0.85)" : "#9a8a6b";
         const hasSub = active && !!tile.sub;
 
         return (
-          <g
-            key={name}
-            transform={`translate(${x}, ${y})`}
-            onClick={active ? () => onSelect(name) : undefined}
-            className={`jm-tile ${active ? "is-active cursor-pointer" : "cursor-default"}`}
-            role={active ? "button" : undefined}
-            aria-label={active ? `${name}${tile?.title ? `（${tile.title}）` : ""}` : `${name}（リスト未登録）`}
-            filter={isSelected ? `url(#${shadow})` : undefined}
-          >
-            {active && <title>{tile.title ?? name}</title>}
-            <rect width={TILE} height={TILE} rx={11} fill={fill} stroke={stroke} strokeWidth={isSelected ? 1.5 : 1} />
-            <text
-              x={TILE / 2}
-              y={hasSub ? TILE / 2 - 4 : TILE / 2 + 1}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize={fontSize}
-              fontWeight={active ? 600 : 400}
-              fill={textColor}
-              style={{ pointerEvents: "none", userSelect: "none" }}
+          // 外側の g で位置を決め、内側の g にホバーの CSS transform を当てる。
+          // 同じ要素に両方を置くと、CSS の transform が属性の translate を上書きして
+          // ホバーした瞬間にタイルが左上へ飛ぶ。
+          <g key={name} transform={`translate(${x}, ${y})`}>
+            <g
+              onClick={active ? () => onSelect(name) : undefined}
+              className={`jm-tile ${active ? "is-active cursor-pointer" : "cursor-default"}`}
+              role={active ? "button" : undefined}
+              aria-label={
+                active
+                  ? `${name}${tile?.title ? `（${tile.title}）` : ""}`
+                  : `${name}（リスト未登録）`
+              }
+              filter={isSelected ? `url(#${shadow})` : undefined}
             >
-              {label}
-            </text>
-            {hasSub && (
+              {active && <title>{tile.title ?? name}</title>}
+              <rect
+                width={TILE}
+                height={TILE}
+                rx={11}
+                fill={fill}
+                stroke={stroke}
+                strokeWidth={isSelected ? 1.5 : 1}
+              />
               <text
                 x={TILE / 2}
-                y={TILE / 2 + 10}
+                y={hasSub ? TILE / 2 - 4 : TILE / 2 + 1}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fontSize={7.5}
-                fontWeight={500}
-                fill={subColor}
+                fontSize={fontSize}
+                fontWeight={active ? 600 : 400}
+                fill={textColor}
                 style={{ pointerEvents: "none", userSelect: "none" }}
               >
-                {tile.sub}
+                {label}
               </text>
-            )}
-            {active && typeof tile.badge === "number" && tile.badge > 0 && (
-              <g style={{ pointerEvents: "none" }}>
-                <circle cx={TILE - 3} cy={3} r={8.5} fill="#ffffff" />
-                <circle cx={TILE - 3} cy={3} r={7} fill="#dc2626" />
-                <text x={TILE - 3} y={3.5} textAnchor="middle" dominantBaseline="middle" fontSize={7.5} fontWeight={700} fill="#fff">
-                  {tile.badge > 99 ? "99+" : tile.badge}
+              {hasSub && (
+                <text
+                  x={TILE / 2}
+                  y={TILE / 2 + 10}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={7.5}
+                  fontWeight={500}
+                  fill={subColor}
+                  style={{ pointerEvents: "none", userSelect: "none" }}
+                >
+                  {tile.sub}
                 </text>
-              </g>
-            )}
+              )}
+              {active && typeof tile.badge === "number" && tile.badge > 0 && (
+                <g style={{ pointerEvents: "none" }}>
+                  <circle cx={TILE - 3} cy={3} r={8.5} fill="#ffffff" />
+                  <circle cx={TILE - 3} cy={3} r={7} fill="#dc2626" />
+                  <text
+                    x={TILE - 3}
+                    y={3.5}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={7.5}
+                    fontWeight={700}
+                    fill="#fff"
+                  >
+                    {tile.badge > 99 ? "99+" : tile.badge}
+                  </text>
+                </g>
+              )}
+            </g>
           </g>
         );
       })}
@@ -231,12 +268,83 @@ export function JapanTileMap({
 
 /** 地方ごとの並び（一覧を地理順に出すとき用） */
 export const REGIONS: { name: string; prefectures: string[] }[] = [
-  { name: "北海道・東北", prefectures: ["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県"] },
-  { name: "関東", prefectures: ["茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県"] },
-  { name: "中部", prefectures: ["新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県"] },
-  { name: "近畿", prefectures: ["三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県"] },
-  { name: "中国・四国", prefectures: ["鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県"] },
-  { name: "九州・沖縄", prefectures: ["福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"] },
+  {
+    name: "北海道・東北",
+    prefectures: [
+      "北海道",
+      "青森県",
+      "岩手県",
+      "宮城県",
+      "秋田県",
+      "山形県",
+      "福島県",
+    ],
+  },
+  {
+    name: "関東",
+    prefectures: [
+      "茨城県",
+      "栃木県",
+      "群馬県",
+      "埼玉県",
+      "千葉県",
+      "東京都",
+      "神奈川県",
+    ],
+  },
+  {
+    name: "中部",
+    prefectures: [
+      "新潟県",
+      "富山県",
+      "石川県",
+      "福井県",
+      "山梨県",
+      "長野県",
+      "岐阜県",
+      "静岡県",
+      "愛知県",
+    ],
+  },
+  {
+    name: "近畿",
+    prefectures: [
+      "三重県",
+      "滋賀県",
+      "京都府",
+      "大阪府",
+      "兵庫県",
+      "奈良県",
+      "和歌山県",
+    ],
+  },
+  {
+    name: "中国・四国",
+    prefectures: [
+      "鳥取県",
+      "島根県",
+      "岡山県",
+      "広島県",
+      "山口県",
+      "徳島県",
+      "香川県",
+      "愛媛県",
+      "高知県",
+    ],
+  },
+  {
+    name: "九州・沖縄",
+    prefectures: [
+      "福岡県",
+      "佐賀県",
+      "長崎県",
+      "熊本県",
+      "大分県",
+      "宮崎県",
+      "鹿児島県",
+      "沖縄県",
+    ],
+  },
 ];
 
 /** 地理順（北→南）のインデックス。並べ替えに使う */
