@@ -43,27 +43,17 @@ const FILTERS: Filter[] = ["全て", "未対応", "対応済み", "アポ獲得"
 
 const CONTACT_LABEL = COLUMN_FIELDS.find((f) => f.key === "contactName")?.label ?? "代表取締役";
 
+/** 手段の結果欄。「受付突破できず」が収まる最小幅に固定して、表の横幅を食わないようにする */
+const CHANNEL_COL = "w-[7.25rem] min-w-[7.25rem] max-w-[7.25rem]";
+/** 担当欄。姓名が見える最小幅 */
+const OWNER_COL = "w-[6.5rem] min-w-[6.5rem] max-w-[6.5rem]";
+
 /** 行の塗り。アポ > 返信・突破 > その他 */
 function rowFill(st: ChannelStatuses): string {
   if (hasAppointment(st)) return FILL.yellow;
   if (APPROACH_CHANNELS.some((ch) => st[ch] === "返信あり")) return FILL.violet;
   if (st.テレアポ === "突破・アポ不可") return FILL.orange;
   return FILL.none;
-}
-
-function ExternalLink({ href, label }: { href: string | null; label: string }) {
-  if (!href) return <span className="text-neutral-300">–</span>;
-  const url = /^https?:\/\//i.test(href) ? href : `https://${href}`;
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-[#7d6b4a] underline decoration-[#9e8d70]/40 hover:decoration-[#9e8d70]"
-    >
-      {label}
-    </a>
-  );
 }
 
 export default function ListPage() {
@@ -227,7 +217,7 @@ export default function ListPage() {
   };
 
   const title = list ? `${list.industryName} / ${list.prefecture}` : "アプローチリスト";
-  const colCount = 12;
+  const colCount = 11;
 
   return (
     <main className={PAGE_MAIN}>
@@ -322,17 +312,15 @@ export default function ListPage() {
                 <thead className="border-b border-neutral-100 dark:border-neutral-800">
                   <tr>
                     {APPROACH_CHANNELS.map((ch) => (
-                      <th key={ch} className={`${TH} ${W.phase}`}>
+                      <th key={ch} className={`${TH} ${CHANNEL_COL}`}>
                         {ch}
                       </th>
                     ))}
-                    <th className={`${TH} ${W.person}`}>担当</th>
+                    <th className={`${TH} ${OWNER_COL}`}>担当</th>
                     <th className={`${TH} min-w-[14rem]`}>会社名</th>
+                    <th className={`${TH} min-w-[7rem]`}>{CONTACT_LABEL}</th>
                     <th className={`${TH} ${W.phone}`}>電話番号</th>
                     <th className={`${TH} min-w-[16rem]`}>住所</th>
-                    <th className={TH}>HP</th>
-                    <th className={TH}>LinkedIn</th>
-                    <th className={`${TH} ${W.person}`}>{CONTACT_LABEL}</th>
                     <th className={`${TH} min-w-[14rem]`}>メモ</th>
                     <th className={`${TH} ${W.date}`}>最終更新</th>
                     <th className={TH}></th>
@@ -356,13 +344,13 @@ export default function ListPage() {
                       <React.Fragment key={c.id}>
                         <tr className={`${rowFill(c.statuses)} ${ROW_HOVER}`}>
                           {APPROACH_CHANNELS.map((ch, i) => (
-                            <td key={ch} className={TD}>
-                              <div className="flex items-center gap-2">
+                            <td key={ch} className={`${TD} ${CHANNEL_COL} ${i === 0 ? "pl-2" : "px-1.5"}`}>
+                              <div className="flex items-center gap-1">
                                 {i === 0 &&
                                   (untouched ? (
-                                    <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" title="未対応" />
+                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" title="未対応" />
                                   ) : (
-                                    <span className="h-2 w-2 shrink-0" />
+                                    <span className="h-1.5 w-1.5 shrink-0" />
                                   ))}
                                 <ToneSelect
                                   value={c.statuses[ch]}
@@ -373,7 +361,7 @@ export default function ListPage() {
                               </div>
                             </td>
                           ))}
-                          <td className={TD}>
+                          <td className={`${TD} ${OWNER_COL} px-1.5`}>
                             <select
                               value={c.assigneeId ?? ""}
                               onChange={(e) => void patch(c.id, { assigneeId: e.target.value || null })}
@@ -393,6 +381,9 @@ export default function ListPage() {
                           <td className={`${TD} font-medium`}>
                             <span className="whitespace-normal">{c.companyName}</span>
                           </td>
+                          <td className={`${TD} text-neutral-600 dark:text-neutral-300`}>
+                            {c.contactName ?? <span className="text-neutral-300">–</span>}
+                          </td>
                           <td className={TD}>
                             {c.phone ? (
                               <a href={`tel:${c.phone.replace(/[^\d+]/g, "")}`} className="tabular-nums hover:text-[#9e8d70]">
@@ -404,15 +395,6 @@ export default function ListPage() {
                           </td>
                           <td className={`${TD} max-w-[20rem] truncate text-neutral-600 dark:text-neutral-300`} title={c.address ?? ""}>
                             {c.address ?? <span className="text-neutral-300">–</span>}
-                          </td>
-                          <td className={TD}>
-                            <ExternalLink href={c.website} label="HP" />
-                          </td>
-                          <td className={TD}>
-                            <ExternalLink href={c.linkedin} label="LinkedIn" />
-                          </td>
-                          <td className={`${TD} text-neutral-600 dark:text-neutral-300`}>
-                            {c.contactName ?? <span className="text-neutral-300">–</span>}
                           </td>
                           <td className={TD}>
                             <input

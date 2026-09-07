@@ -82,8 +82,6 @@ export const COLUMN_FIELDS = [
   { key: "companyName", label: "会社名", required: true },
   { key: "phone", label: "電話番号", required: false },
   { key: "address", label: "住所", required: false },
-  { key: "website", label: "ホームページ", required: false },
-  { key: "linkedin", label: "LinkedIn", required: false },
   { key: "contactName", label: "代表取締役", required: false },
   { key: "sheetNote", label: "備考", required: false },
 ] as const;
@@ -132,8 +130,6 @@ export type Company = {
   companyName: string;
   phone: string | null;
   address: string | null;
-  website: string | null;
-  linkedin: string | null;
   contactName: string | null;
   sheetNote: string | null;
   /** シートの全列（見出し → 値）。対応付けしなかった列もここに残る */

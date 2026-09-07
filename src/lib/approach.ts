@@ -189,8 +189,6 @@ export function guessColumnMap(headers: string[]): ColumnMap {
     companyName: /会社|企業|法人|社名|company/i,
     phone: /電話|tel|phone/i,
     address: /住所|所在地|address/i,
-    website: /ホームページ|hp|url|web|サイト/i,
-    linkedin: /linkedin|リンクトイン|リンクドイン/i,
     contactName: /担当|代表|氏名|名前|contact/i,
     sheetNote: /備考|メモ|note|remarks/i,
   };
@@ -271,14 +269,12 @@ export async function syncList(listId: string): Promise<SyncResult> {
 
       const res = await client.query(
         `INSERT INTO approach_companies
-          (id, list_id, row_key, company_name, phone, address, website, linkedin, contact_name, sheet_note, raw)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+          (id, list_id, row_key, company_name, phone, address, contact_name, sheet_note, raw)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
          ON CONFLICT (list_id, row_key) DO UPDATE SET
            company_name = EXCLUDED.company_name,
            phone = EXCLUDED.phone,
            address = EXCLUDED.address,
-           website = EXCLUDED.website,
-           linkedin = EXCLUDED.linkedin,
            contact_name = EXCLUDED.contact_name,
            sheet_note = EXCLUDED.sheet_note,
            raw = EXCLUDED.raw,
@@ -292,8 +288,6 @@ export async function syncList(listId: string): Promise<SyncResult> {
           companyName,
           phone,
           pick(row, "address"),
-          pick(row, "website"),
-          pick(row, "linkedin"),
           pick(row, "contactName"),
           pick(row, "sheetNote"),
           JSON.stringify(row),
@@ -389,7 +383,7 @@ export async function getList(listId: string): Promise<ApproachList | null> {
 export async function listCompanies(listId: string): Promise<Company[]> {
   const res = await pool.query(
     `SELECT
-      c.id, c.list_id AS "listId", c.company_name AS "companyName", c.phone, c.address, c.website, c.linkedin,
+      c.id, c.list_id AS "listId", c.company_name AS "companyName", c.phone, c.address,
       c.contact_name AS "contactName", c.sheet_note AS "sheetNote", c.raw,
       c.assignee_id AS "assigneeId", COALESCE(NULLIF(a.display_name, ''), a.login_id) AS "assigneeName",
       c.tel_status AS "telStatus", c.dm_status AS "dmStatus", c.letter_status AS "letterStatus", c.memo,
