@@ -258,6 +258,7 @@ export async function syncList(listId: string): Promise<SyncResult> {
   try {
     await client.query("BEGIN");
     const seen = new Set<string>();
+    let rowNo = 0;
 
     for (const row of sheet.rows) {
       const companyName = pick(row, "companyName");
@@ -266,11 +267,12 @@ export async function syncList(listId: string): Promise<SyncResult> {
       const key = rowKeyOf(companyName, phone ?? "");
       if (seen.has(key)) continue; // 同じ会社が2行あっても1件にする
       seen.add(key);
+      rowNo += 1;
 
       const res = await client.query(
         `INSERT INTO approach_companies
-          (id, list_id, row_key, company_name, phone, address, contact_name, sheet_note, raw)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+          (id, list_id, row_key, company_name, phone, address, contact_name, sheet_note, raw, sheet_row)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
          ON CONFLICT (list_id, row_key) DO UPDATE SET
            company_name = EXCLUDED.company_name,
            phone = EXCLUDED.phone,
@@ -278,6 +280,7 @@ export async function syncList(listId: string): Promise<SyncResult> {
            contact_name = EXCLUDED.contact_name,
            sheet_note = EXCLUDED.sheet_note,
            raw = EXCLUDED.raw,
+           sheet_row = EXCLUDED.sheet_row,
            removed_at = NULL,
            updated_at = NOW()
          RETURNING (xmax = 0) AS inserted;`,
@@ -291,6 +294,7 @@ export async function syncList(listId: string): Promise<SyncResult> {
           pick(row, "contactName"),
           pick(row, "sheetNote"),
           JSON.stringify(row),
+          rowNo,
         ],
       );
       if (res.rows[0]?.inserted) inserted++;
@@ -383,7 +387,7 @@ export async function getList(listId: string): Promise<ApproachList | null> {
 export async function listCompanies(listId: string): Promise<Company[]> {
   const res = await pool.query(
     `SELECT
-      c.id, c.list_id AS "listId", c.company_name AS "companyName", c.phone, c.address,
+      c.id, c.list_id AS "listId", c.sheet_row AS "no", c.company_name AS "companyName", c.phone, c.address,
       c.contact_name AS "contactName", c.sheet_note AS "sheetNote", c.raw,
       c.assignee_id AS "assigneeId", COALESCE(NULLIF(a.display_name, ''), a.login_id) AS "assigneeName",
       c.tel_status AS "telStatus", c.dm_status AS "dmStatus", c.letter_status AS "letterStatus", c.memo,

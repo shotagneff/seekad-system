@@ -127,6 +127,8 @@ export type ApproachList = {
 export type Company = {
   id: string;
   listId: string;
+  /** シート上の行番号（1始まり）。一覧の先頭に出す。取り込みのたびに振り直す */
+  no: number | null;
   companyName: string;
   phone: string | null;
   address: string | null;

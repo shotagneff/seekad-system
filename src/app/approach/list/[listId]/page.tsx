@@ -71,6 +71,8 @@ export default function ListPage() {
   const [filter, setFilter] = useState<Filter>("全て");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("");
   const [query, setQuery] = useState("");
+  /** 並び順。更新順＝最後に動かした会社が上（サーバの順）、番号順＝シートの行順 */
+  const [order, setOrder] = useState<"更新順" | "番号順">("更新順");
   const [openId, setOpenId] = useState<string | null>(null);
   const [memoDraft, setMemoDraft] = useState<Record<string, string>>({});
 
@@ -181,7 +183,7 @@ export default function ListPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return companies.filter((c) => {
+    const list = companies.filter((c) => {
       const untouched = isUntouched(c.statuses);
       if (filter === "未対応" && !untouched) return false;
       if (filter === "対応済み" && untouched) return false;
@@ -196,7 +198,9 @@ export default function ListPage() {
       }
       return true;
     });
-  }, [companies, filter, assigneeFilter, query]);
+    if (order === "番号順") list.sort((a, b) => (a.no ?? 1e9) - (b.no ?? 1e9));
+    return list;
+  }, [companies, filter, assigneeFilter, query, order]);
 
   const counts = useMemo(() => {
     const untouched = companies.filter((c) => isUntouched(c.statuses)).length;
@@ -217,7 +221,7 @@ export default function ListPage() {
   };
 
   const title = list ? `${list.industryName} / ${list.prefecture}` : "アプローチリスト";
-  const colCount = 11;
+  const colCount = 12;
 
   return (
     <main className={PAGE_MAIN}>
@@ -305,12 +309,28 @@ export default function ListPage() {
                 className="ml-auto w-full max-w-xs rounded-full border border-neutral-200 bg-white px-4 py-1.5 text-xs outline-none focus:border-[#9e8d70] dark:border-neutral-700 dark:bg-neutral-900"
               />
               <span className="text-xs text-neutral-400">{filtered.length} 件</span>
+              <div className="flex overflow-hidden rounded-full border border-neutral-200 text-xs dark:border-neutral-700">
+                {(["更新順", "番号順"] as const).map((o) => (
+                  <button
+                    key={o}
+                    onClick={() => setOrder(o)}
+                    className={`px-3 py-1.5 font-medium transition-colors ${
+                      order === o
+                        ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                        : "bg-white text-neutral-500 hover:bg-neutral-100 dark:bg-neutral-900 dark:text-neutral-400"
+                    }`}
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <TableFrame>
               <table className="min-w-full">
                 <thead className="border-b border-neutral-100 dark:border-neutral-800">
                   <tr>
+                    <th className={`${TH} w-12 min-w-12 text-right`}>No.</th>
                     {APPROACH_CHANNELS.map((ch) => (
                       <th key={ch} className={`${TH} ${CHANNEL_COL}`}>
                         {ch}
@@ -343,6 +363,9 @@ export default function ListPage() {
                     return (
                       <React.Fragment key={c.id}>
                         <tr className={`${rowFill(c.statuses)} ${ROW_HOVER}`}>
+                          <td className={`${TD} w-12 min-w-12 pr-1 text-right text-xs tabular-nums text-neutral-400`}>
+                            {c.no ?? "–"}
+                          </td>
                           {APPROACH_CHANNELS.map((ch, i) => (
                             <td key={ch} className={`${TD} ${CHANNEL_COL} ${i === 0 ? "pl-2" : "px-1.5"}`}>
                               <div className="flex items-center gap-1">

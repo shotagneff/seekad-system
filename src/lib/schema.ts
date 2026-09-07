@@ -544,6 +544,16 @@ export async function ensureApproachTables(): Promise<void> {
   await pool.query(`ALTER TABLE approach_companies ADD COLUMN IF NOT EXISTS tel_status TEXT NOT NULL DEFAULT '未対応';`);
   await pool.query(`ALTER TABLE approach_companies ADD COLUMN IF NOT EXISTS dm_status TEXT NOT NULL DEFAULT '未送信';`);
   await pool.query(`ALTER TABLE approach_companies ADD COLUMN IF NOT EXISTS letter_status TEXT NOT NULL DEFAULT '未送付';`);
+  // 2026-09-08: シート上の行番号（1始まり）。一覧の先頭に No. として出す。取り込みのたびに振り直す
+  await pool.query(`ALTER TABLE approach_companies ADD COLUMN IF NOT EXISTS sheet_row INTEGER;`);
+  // 既存行の穴埋め（取り込み順＝シート順なので created_at で採番）
+  await pool.query(`
+    UPDATE approach_companies c SET sheet_row = n.rn
+    FROM (
+      SELECT id, ROW_NUMBER() OVER (PARTITION BY list_id ORDER BY created_at, company_name) AS rn
+      FROM approach_companies WHERE removed_at IS NULL
+    ) n
+    WHERE c.id = n.id AND c.sheet_row IS NULL;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS approach_actions (
       id TEXT PRIMARY KEY,
