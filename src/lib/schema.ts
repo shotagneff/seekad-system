@@ -493,7 +493,28 @@ export async function ensureNurturingTables(): Promise<void> {
 // 会社の情報はシートから取り込むが、担当・手段・状況はシステム側だけが持つ。
 // 再取り込みで会社情報は上書きするが、対応の履歴は消さない（row_key で突き合わせる）。
 // ---------------------------------------------------------------------------
-export async function ensureApproachTables(): Promise<void> {
+/**
+ * テーブル確認は **プロセスごとに1回** だけ行う。
+ *
+ * 以前は API のたびに CREATE TABLE / CREATE INDEX IF NOT EXISTS を流していた。
+ * これらは既にあっても対象テーブルのロックを取りに行くため、取り込みなどで
+ * approach_companies に長いトランザクションがあると、その解放待ちで
+ * 業界一覧が「読み込み中…」のまま止まっていた（2026-09-08）。
+ * 失敗したときは次の呼び出しでやり直せるように promise を捨てる。
+ */
+let approachTablesReady: Promise<void> | null = null;
+
+export function ensureApproachTables(): Promise<void> {
+  if (!approachTablesReady) {
+    approachTablesReady = createApproachTables().catch((e) => {
+      approachTablesReady = null;
+      throw e;
+    });
+  }
+  return approachTablesReady;
+}
+
+async function createApproachTables(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS approach_industries (
       id TEXT PRIMARY KEY,
