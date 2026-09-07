@@ -133,6 +133,8 @@ export type Company = {
   phone: string | null;
   address: string | null;
   contactName: string | null;
+  /** 代表取締役名のカタカナ読み（approach_name_kana から。未推定なら null） */
+  contactKana: string | null;
   sheetNote: string | null;
   /** シートの全列（見出し → 値）。対応付けしなかった列もここに残る */
   raw: Record<string, string>;

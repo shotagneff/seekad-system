@@ -592,6 +592,15 @@ async function createApproachTables(): Promise<void> {
   `);
   await pool.query('CREATE INDEX IF NOT EXISTS idx_approach_actions_actor ON approach_actions (actor_id, created_at);');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_approach_actions_created ON approach_actions (created_at);');
+  // 代表取締役名のカタカナ読み（名前 → 読み）。Claude API で推定した結果のキャッシュ。
+  // 名前をキーにしているので、再取り込みしても同じ名前は再推定しない。
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS approach_name_kana (
+      name TEXT PRIMARY KEY,
+      kana TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
 }
 
 export async function ensureAllTables(): Promise<void> {

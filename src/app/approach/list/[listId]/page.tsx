@@ -212,6 +212,7 @@ export default function ListPage() {
           c.phone,
           c.address,
           c.contactName,
+          c.contactKana,
           c.memo,
           c.sheetNote,
         ]
@@ -398,7 +399,7 @@ export default function ListPage() {
                   <tr>
                     <th className={`${TH} w-14 min-w-14 text-right`}>No.</th>
                     <th className={`${TH} min-w-[14rem]`}>会社名</th>
-                    <th className={`${TH} min-w-[7rem]`}>{CONTACT_LABEL}</th>
+                    <th className={`${TH} min-w-[11rem]`}>{CONTACT_LABEL}</th>
                     <th className={`${TH} ${W.phone}`}>電話番号</th>
                     {APPROACH_CHANNELS.map((ch) => (
                       <th key={ch} className={`${TH} ${CHANNEL_COL} px-1.5`}>
@@ -465,7 +466,16 @@ export default function ListPage() {
                           <td
                             className={`${TD} text-neutral-600 dark:text-neutral-300`}
                           >
-                            {c.contactName ?? (
+                            {c.contactName ? (
+                              <>
+                                {c.contactName}
+                                {c.contactKana && (
+                                  <span className="ml-1.5 text-xs text-neutral-400 dark:text-neutral-500">
+                                    {c.contactKana}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
                               <span className="text-neutral-300">–</span>
                             )}
                           </td>

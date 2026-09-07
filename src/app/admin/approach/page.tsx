@@ -42,6 +42,9 @@ export default function AdminApproachPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyListId, setBusyListId] = useState<string | null>(null);
+  // 代表取締役名のカタカナ読み（approach_name_kana）の付与状況
+  const [kana, setKana] = useState<{ total: number; done: number; remaining: number } | null>(null);
+  const [kanaRunning, setKanaRunning] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -56,9 +59,21 @@ export default function AdminApproachPage() {
     }
   }, []);
 
+  const loadKana = useCallback(async () => {
+    try {
+      const json = await readJson<{ total: number; done: number; remaining: number }>(
+        await fetch("/api/admin/approach/name-kana", { cache: "no-store" }),
+      );
+      setKana({ total: json.total, done: json.done, remaining: json.remaining });
+    } catch {
+      // 件数が取れなくても管理画面自体は使えるので握りつぶす
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadKana();
+  }, [load, loadKana]);
 
   const flash = (msg: string) => {
     setMessage(msg);
@@ -231,6 +246,30 @@ export default function AdminApproachPage() {
     } finally {
       setBusyListId(null);
       await load();
+    }
+  };
+
+  // 残りが 0 になるまで API を繰り返し呼ぶ（1回あたり数バッチしか処理しないため）
+  const generateKana = async () => {
+    setKanaRunning(true);
+    try {
+      for (let i = 0; i < 200; i++) {
+        const json = await readJson<{ total: number; done: number; remaining: number }>(
+          await fetch("/api/admin/approach/name-kana", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ maxBatches: 3 }),
+          }),
+        );
+        setKana({ total: json.total, done: json.done, remaining: json.remaining });
+        if (json.remaining <= 0) break;
+      }
+      flash("代表取締役のカタカナ読みを付けました");
+    } catch (e) {
+      fail((e as Error).message);
+    } finally {
+      setKanaRunning(false);
+      await loadKana();
     }
   };
 
@@ -485,6 +524,33 @@ export default function AdminApproachPage() {
               </div>
             </div>
           )}
+        </SectionCard>
+
+        <SectionCard
+          title="代表取締役のカタカナ読み"
+          description="会社一覧の代表取締役の右側に出る読みです。取り込みのたびに自動で付きますが、付いていないぶんはここで一括で付けられます（Claude API を使います）"
+        >
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <div className="text-neutral-600 dark:text-neutral-300">
+              {kana ? (
+                <>
+                  読みあり <span className="font-medium tabular-nums">{kana.done}</span> / {kana.total} 名
+                  {kana.remaining > 0 && (
+                    <span className="ml-2 text-[#7d6b4a]">（残り {kana.remaining} 名）</span>
+                  )}
+                </>
+              ) : (
+                "件数を確認中…"
+              )}
+            </div>
+            <PrimaryButton
+              onClick={generateKana}
+              disabled={kanaRunning || !kana || kana.remaining <= 0}
+              className="shrink-0 whitespace-nowrap"
+            >
+              {kanaRunning ? "生成中…（そのままお待ちください）" : "残りの読みを生成する"}
+            </PrimaryButton>
+          </div>
         </SectionCard>
 
         <SectionCard title="登録済みのリスト" description="取り込みは会社一覧の画面からも押せます" bodyClassName="p-0">

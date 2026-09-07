@@ -133,6 +133,16 @@
 
 ## 7. 変更ログ（新しいものを上に書く）
 
+### 2026-09-08（アプローチリスト: 代表取締役の右側にカタカナ読みを表示）
+
+- 会社一覧の **代表取締役の名前の右に、カタカナ読みを小さく灰色で出す**（例: `山田 太郎 ヤマダ タロウ`）。電話で名前を呼ぶときに読みで迷わないため。検索の対象にも含める
+- 読みは **Claude API（`claude-opus-5`、structured outputs）で推定**し、`approach_name_kana`（`name` → `kana`、名前がキー）に保存。同じ名前は一度しか推定しない。漢字も外字も含まない名前（カタカナ・英字）は API を使わずそのまま登録
+- ルール（`src/lib/name-kana.ts` のプロンプト）: 全角カタカナ、姓と名は全角スペース区切り、外字 `〓` は推測できれば推測しできなければ `？`、括弧書き・肩書きは除いて本人の名前だけ読む、人名でなければ null
+- **付くタイミング**: 「シートから再取り込み」のたびに、そのリストの未登録の名前へ自動で付く（1回の取り込みで最大3バッチ＝240名。タイムアウト対策。残りは次回の取り込みか管理画面で）。取り込み自体は読みの生成に失敗しても成功扱い
+- **管理画面 `/admin/approach` に「代表取締役のカタカナ読み」セクション**: 読みあり/全体の件数と「残りの読みを生成する」ボタン。`POST /api/admin/approach/name-kana` を残り 0 になるまで繰り返し呼ぶ（1回 3 バッチ、`maxDuration` 180 秒）。本番の `ANTHROPIC_API_KEY` を使う
+- 既存の 6,826 名は `scripts/backfill-name-kana.mjs` で一括付与済み（2026-09-08。プロンプトは `name-kana.ts` と同じ内容を複製している。変えるときは両方直す）
+- **注意**: 読みは推定なので珍しい姓・名は外れることがある。間違いに気づいたら `approach_name_kana` の該当行を直す（画面からの修正は未実装）
+
 ### 2026-09-08（アプローチリスト: 会社一覧の先頭に No. 列を追加、列の並びを作業順に）
 
 - 各リストの1列目に **No.**（シート上の行番号、1始まり）を出す。`approach_companies.sheet_row`。取り込みのたびにシートの順で振り直すので、シートの並びと一致する。会社名＋電話で同定した重複行は1件に数えるため、シートの物理行番号とはずれることがある
@@ -318,6 +328,8 @@
 シークアドシステム/
 ├── CLAUDE.md                          本ファイル。プロジェクト全体のルール・進捗・変更ログ。
 ├── package.json                       依存管理。Next.js 16 / React 19 / pg / Tailwind v4。
+├── scripts/
+│   └── backfill-name-kana.mjs         代表取締役名のカタカナ読みを一括で付ける（node --env-file=.env.local scripts/backfill-name-kana.mjs）。
 ├── middleware.ts                      認証ミドルウェア。全ページで Cookie 検証、admin 権限チェック。
 ├── next.config.ts                     Next.js 設定（現状デフォルト）。
 ├── vercel.json                        Vercel Cron 設定（/api/nurturing/cron を毎時実行＝シナリオ配信）。
@@ -455,7 +467,8 @@
     │       │   └── verify/            提案した制度が今も受付中かを公式ページで確認（web_fetch）。
     │       │                          提案とは別リクエスト。検証で待たせず、失敗しても提案は残す。
     │       └── admin/                 管理者用API（users / e-learning / announcements / events）。
-    │           └── approach/          industries（業界CRUD）/ lists（リスト登録・更新・削除。登録時に取り込み）/ sheet-preview（見出しと先頭3行）。
+    │           └── approach/          industries（業界CRUD）/ lists（リスト登録・更新・削除。登録時に取り込み）/ sheet-preview（見出しと先頭3行）
+    │                                  / name-kana（代表取締役のカタカナ読みの件数と一括生成）。
     │
     ├── components/                    画面共通のUI部品。
     │   ├── panel.tsx                  パネル調UIの共通部品（ページ枠/カード/入力/KPI/ボタン）。全ページで使う。
@@ -476,6 +489,7 @@
     │   ├── callforce.ts               Callforce（AI架電）の反響リード取得・集計。
     │   ├── approach-types.ts          アプローチリストの型・選択肢（手段・状況）・列の対応付け・都道府県。クライアント可。
     │   ├── approach.ts                アプローチリストのDBアクセス・スプレッドシート取得（CSV公開URL）・取り込み・集計。サーバ専用。
+    │   ├── name-kana.ts               代表取締役名のカタカナ読み。Claude API で推定し approach_name_kana に保存。取り込み後に自動で呼ぶ。サーバ専用。
     │   ├── attendance-util.ts         出勤の純粋ロジック（曜日→出勤者の確定 resolveForDate 等）。ブラウザ・サーバ共用。
     │   ├── attendance.ts              出勤スケジュールのDBアクセス（weekly / override の取得・保存）。サーバ専用。
     │   ├── sales-recordings.ts        アポ獲得管理リードの商談録音（Vercel Blob）のDBアクセス。サーバ専用。

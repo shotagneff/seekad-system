@@ -8,6 +8,7 @@ import type { NextRequest } from "next/server";
 import { pool } from "./db";
 import { verifySessionToken } from "./auth-token";
 import { ensureApproachTables } from "./schema";
+import { fillMissingKana } from "./name-kana";
 import {
   APPROACH_CHANNELS,
   COLUMN_FIELDS,
@@ -255,6 +256,7 @@ export async function syncList(listId: string): Promise<SyncResult> {
   let inserted = 0;
   let updated = 0;
   let removed = 0;
+  const contactNames: string[] = [];
   try {
     await client.query("BEGIN");
     const seen = new Set<string>();
@@ -268,6 +270,8 @@ export async function syncList(listId: string): Promise<SyncResult> {
       if (seen.has(key)) continue; // 同じ会社が2行あっても1件にする
       seen.add(key);
       rowNo += 1;
+      const contactName = pick(row, "contactName");
+      if (contactName) contactNames.push(contactName);
 
       const res = await client.query(
         `INSERT INTO approach_companies
@@ -291,7 +295,7 @@ export async function syncList(listId: string): Promise<SyncResult> {
           companyName,
           phone,
           pick(row, "address"),
-          pick(row, "contactName"),
+          contactName,
           pick(row, "sheetNote"),
           JSON.stringify(row),
           rowNo,
@@ -320,6 +324,15 @@ export async function syncList(listId: string): Promise<SyncResult> {
     throw e;
   } finally {
     client.release();
+  }
+
+  // 代表取締役名のカタカナ読みを補完する（best-effort。失敗しても取り込み自体は成功扱い）。
+  // 取り込みは API ルート内で動くので、1回あたりのバッチ数を絞ってタイムアウトを避ける。
+  // 残りは次回の取り込み、または scripts/backfill-name-kana.mjs で埋める。
+  try {
+    await fillMissingKana({ names: contactNames, maxBatches: 3 });
+  } catch (e) {
+    console.error("[approach] name kana fill failed:", e);
   }
 
   return { inserted, updated, removed, total: inserted + updated };
@@ -388,7 +401,7 @@ export async function listCompanies(listId: string): Promise<Company[]> {
   const res = await pool.query(
     `SELECT
       c.id, c.list_id AS "listId", c.sheet_row AS "no", c.company_name AS "companyName", c.phone, c.address,
-      c.contact_name AS "contactName", c.sheet_note AS "sheetNote", c.raw,
+      c.contact_name AS "contactName", k.kana AS "contactKana", c.sheet_note AS "sheetNote", c.raw,
       c.assignee_id AS "assigneeId", COALESCE(NULLIF(a.display_name, ''), a.login_id) AS "assigneeName",
       c.tel_status AS "telStatus", c.dm_status AS "dmStatus", c.letter_status AS "letterStatus", c.memo,
       c.last_action_at AS "lastActionAt", c.last_action_by AS "lastActionBy",
@@ -397,6 +410,7 @@ export async function listCompanies(listId: string): Promise<Company[]> {
     FROM approach_companies c
     LEFT JOIN igos_users a ON a.login_id = c.assignee_id
     LEFT JOIN igos_users b ON b.login_id = c.last_action_by
+    LEFT JOIN approach_name_kana k ON k.name = c.contact_name
     WHERE c.list_id = $1 AND c.removed_at IS NULL
     ORDER BY c.last_action_at DESC NULLS LAST, c.sheet_row ASC NULLS LAST, c.company_name;`,
     [listId],
