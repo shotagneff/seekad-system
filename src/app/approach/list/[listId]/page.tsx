@@ -9,7 +9,12 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { PAGE_MAIN, PAGE_INNER, PageHeader, PrimaryButton } from "@/components/panel";
+import {
+  PAGE_MAIN,
+  PAGE_INNER,
+  PageHeader,
+  PrimaryButton,
+} from "@/components/panel";
 import {
   CELL_INPUT,
   FILL,
@@ -41,10 +46,13 @@ import { Breadcrumb, Notice, SubNav, readJson, shortDateTime } from "../../ui";
 type Filter = "全て" | "未対応" | "対応済み" | "アポ獲得";
 const FILTERS: Filter[] = ["全て", "未対応", "対応済み", "アポ獲得"];
 
-const CONTACT_LABEL = COLUMN_FIELDS.find((f) => f.key === "contactName")?.label ?? "代表取締役";
+const CONTACT_LABEL =
+  COLUMN_FIELDS.find((f) => f.key === "contactName")?.label ?? "代表取締役";
 
 /** 手段の結果欄。「受付突破できず」が収まる最小幅に固定して、表の横幅を食わないようにする */
 const CHANNEL_COL = "w-[7.25rem] min-w-[7.25rem] max-w-[7.25rem]";
+/** 見出しに「必須」を付ける手段。テレアポと DM は全社に必ず行う運用 */
+const REQUIRED_CHANNELS: readonly ApproachChannel[] = ["テレアポ", "DM"];
 /** 担当欄。姓名が見える最小幅 */
 const OWNER_COL = "w-[6.5rem] min-w-[6.5rem] max-w-[6.5rem]";
 
@@ -122,7 +130,11 @@ export default function ListPage() {
   const patch = useCallback(
     async (
       id: string,
-      body: { assigneeId?: string | null; statuses?: Partial<ChannelStatuses>; memo?: string | null },
+      body: {
+        assigneeId?: string | null;
+        statuses?: Partial<ChannelStatuses>;
+        memo?: string | null;
+      },
     ) => {
       const before = companies;
       const now = new Date().toISOString();
@@ -130,8 +142,11 @@ export default function ListPage() {
         prev.map((c) => {
           if (c.id !== id) return c;
           const statuses = { ...c.statuses, ...(body.statuses ?? {}) };
-          const actionHappened = APPROACH_CHANNELS.some((ch) => statuses[ch] !== c.statuses[ch]);
-          const assigneeId = body.assigneeId === undefined ? c.assigneeId : body.assigneeId;
+          const actionHappened = APPROACH_CHANNELS.some(
+            (ch) => statuses[ch] !== c.statuses[ch],
+          );
+          const assigneeId =
+            body.assigneeId === undefined ? c.assigneeId : body.assigneeId;
           return {
             ...c,
             assigneeId,
@@ -168,11 +183,13 @@ export default function ListPage() {
     setNotice(null);
     setError(null);
     try {
-      const json = await readJson<{ result: { inserted: number; updated: number; removed: number } }>(
-        await fetch(`/api/approach/lists/${listId}/sync`, { method: "POST" }),
-      );
+      const json = await readJson<{
+        result: { inserted: number; updated: number; removed: number };
+      }>(await fetch(`/api/approach/lists/${listId}/sync`, { method: "POST" }));
       const r = json.result;
-      setNotice(`シートを取り込みました（追加 ${r.inserted} / 更新 ${r.updated} / 除外 ${r.removed}）`);
+      setNotice(
+        `シートを取り込みました（追加 ${r.inserted} / 更新 ${r.updated} / 除外 ${r.removed}）`,
+      );
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -190,7 +207,14 @@ export default function ListPage() {
       if (filter === "アポ獲得" && !hasAppointment(c.statuses)) return false;
       if (assigneeFilter && c.assigneeId !== assigneeFilter) return false;
       if (q) {
-        const hay = [c.companyName, c.phone, c.address, c.contactName, c.memo, c.sheetNote]
+        const hay = [
+          c.companyName,
+          c.phone,
+          c.address,
+          c.contactName,
+          c.memo,
+          c.sheetNote,
+        ]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -204,14 +228,23 @@ export default function ListPage() {
 
   const counts = useMemo(() => {
     const untouched = companies.filter((c) => isUntouched(c.statuses)).length;
-    const appointments = companies.filter((c) => hasAppointment(c.statuses)).length;
+    const appointments = companies.filter((c) =>
+      hasAppointment(c.statuses),
+    ).length;
     const byChannel = Object.fromEntries(
       APPROACH_CHANNELS.map((ch) => [
         ch,
-        companies.filter((c) => c.statuses[ch] !== CHANNEL_STATUSES[ch][0]).length,
+        companies.filter((c) => c.statuses[ch] !== CHANNEL_STATUSES[ch][0])
+          .length,
       ]),
     ) as Record<ApproachChannel, number>;
-    return { total: companies.length, untouched, done: companies.length - untouched, appointments, byChannel };
+    return {
+      total: companies.length,
+      untouched,
+      done: companies.length - untouched,
+      appointments,
+      byChannel,
+    };
   }, [companies]);
 
   /** 対応付けした列以外のシートの値。詳細行に出す */
@@ -220,7 +253,9 @@ export default function ListPage() {
     return Object.entries(c.raw ?? {}).filter(([k, v]) => !mapped.has(k) && v);
   };
 
-  const title = list ? `${list.industryName} / ${list.prefecture}` : "アプローチリスト";
+  const title = list
+    ? `${list.industryName} / ${list.prefecture}`
+    : "アプローチリスト";
   const colCount = 12;
 
   return (
@@ -229,7 +264,10 @@ export default function ListPage() {
         <PageHeader
           eyebrow="Approach List"
           title={title}
-          description={list?.name ?? "テレアポ・DM・手紙それぞれの結果を変えるとその場で保存され、営業別サマリーに反映されます。"}
+          description={
+            list?.name ??
+            "テレアポ・DM・手紙それぞれの結果を変えるとその場で保存され、営業別サマリーに反映されます。"
+          }
           action={
             list && (
               <div className="flex flex-wrap gap-2">
@@ -252,7 +290,10 @@ export default function ListPage() {
         <Breadcrumb
           items={[
             { href: "/approach", label: "業界" },
-            { href: list ? `/approach/${list.industryId}` : undefined, label: list?.industryName ?? "…" },
+            {
+              href: list ? `/approach/${list.industryId}` : undefined,
+              label: list?.industryName ?? "…",
+            },
             { label: list?.prefecture ?? "…" },
           ]}
         />
@@ -261,7 +302,9 @@ export default function ListPage() {
         {error && <Notice tone="error">{error}</Notice>}
         {notice && <Notice>{notice}</Notice>}
         {list?.lastSyncError && !error && (
-          <Notice tone="error">前回の取り込みに失敗しています: {list.lastSyncError}</Notice>
+          <Notice tone="error">
+            前回の取り込みに失敗しています: {list.lastSyncError}
+          </Notice>
         )}
 
         {list && (
@@ -270,10 +313,22 @@ export default function ListPage() {
               <Kpi
                 label="会社数"
                 value={String(counts.total)}
-                hint={list.lastSyncedAt ? `取込 ${shortDateTime(list.lastSyncedAt)}` : "未取込"}
+                hint={
+                  list.lastSyncedAt
+                    ? `取込 ${shortDateTime(list.lastSyncedAt)}`
+                    : "未取込"
+                }
               />
-              <Kpi label="未対応" value={String(counts.untouched)} hint="どの手段もまだ" />
-              <Kpi label="テレアポ済" value={String(counts.byChannel.テレアポ)} hint="コールした会社" />
+              <Kpi
+                label="未対応"
+                value={String(counts.untouched)}
+                hint="どの手段もまだ"
+              />
+              <Kpi
+                label="テレアポ済"
+                value={String(counts.byChannel.テレアポ)}
+                hint="コールした会社"
+              />
               <Kpi
                 label="DM・手紙済"
                 value={String(counts.byChannel.DM + counts.byChannel.手紙)}
@@ -282,13 +337,22 @@ export default function ListPage() {
               <Kpi
                 label="アポ獲得"
                 value={String(counts.appointments)}
-                hint={counts.total ? `${Math.round((counts.appointments / counts.total) * 1000) / 10}%` : "–"}
+                hint={
+                  counts.total
+                    ? `${Math.round((counts.appointments / counts.total) * 1000) / 10}%`
+                    : "–"
+                }
               />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               {FILTERS.map((f) => (
-                <FilterChip key={f} label={f} active={filter === f} onClick={() => setFilter(f)} />
+                <FilterChip
+                  key={f}
+                  label={f}
+                  active={filter === f}
+                  onClick={() => setFilter(f)}
+                />
               ))}
               <select
                 value={assigneeFilter}
@@ -308,7 +372,9 @@ export default function ListPage() {
                 placeholder="会社名・電話・住所・メモで検索"
                 className="ml-auto w-full max-w-xs rounded-full border border-neutral-200 bg-white px-4 py-1.5 text-xs outline-none focus:border-[#9e8d70] dark:border-neutral-700 dark:bg-neutral-900"
               />
-              <span className="text-xs text-neutral-400">{filtered.length} 件</span>
+              <span className="text-xs text-neutral-400">
+                {filtered.length} 件
+              </span>
               <div className="flex overflow-hidden rounded-full border border-neutral-200 text-xs dark:border-neutral-700">
                 {(["更新順", "番号順"] as const).map((o) => (
                   <button
@@ -330,18 +396,25 @@ export default function ListPage() {
               <table className="min-w-full">
                 <thead className="border-b border-neutral-100 dark:border-neutral-800">
                   <tr>
-                    <th className={`${TH} w-12 min-w-12 text-right`}>No.</th>
-                    {APPROACH_CHANNELS.map((ch) => (
-                      <th key={ch} className={`${TH} ${CHANNEL_COL}`}>
-                        {ch}
-                      </th>
-                    ))}
-                    <th className={`${TH} ${OWNER_COL}`}>担当</th>
+                    <th className={`${TH} w-14 min-w-14 text-right`}>No.</th>
                     <th className={`${TH} min-w-[14rem]`}>会社名</th>
                     <th className={`${TH} min-w-[7rem]`}>{CONTACT_LABEL}</th>
                     <th className={`${TH} ${W.phone}`}>電話番号</th>
-                    <th className={`${TH} min-w-[16rem]`}>住所</th>
+                    {APPROACH_CHANNELS.map((ch) => (
+                      <th key={ch} className={`${TH} ${CHANNEL_COL} px-1.5`}>
+                        <span className="inline-flex items-center gap-1">
+                          {ch}
+                          {REQUIRED_CHANNELS.includes(ch) && (
+                            <span className="rounded-full bg-red-100 px-1.5 py-px text-[9px] font-bold normal-case tracking-normal text-red-600 dark:bg-red-900/40 dark:text-red-300">
+                              必須
+                            </span>
+                          )}
+                        </span>
+                      </th>
+                    ))}
                     <th className={`${TH} min-w-[14rem]`}>メモ</th>
+                    <th className={`${TH} ${OWNER_COL}`}>担当</th>
+                    <th className={`${TH} min-w-[16rem]`}>住所</th>
                     <th className={`${TH} ${W.date}`}>最終更新</th>
                     <th className={TH}></th>
                   </tr>
@@ -349,7 +422,10 @@ export default function ListPage() {
                 <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={colCount + 1} className="px-5 py-8 text-center text-sm text-neutral-500">
+                      <td
+                        colSpan={colCount + 1}
+                        className="px-5 py-8 text-center text-sm text-neutral-500"
+                      >
                         {companies.length === 0
                           ? "会社がまだありません。「シートから再取り込み」を押してください。"
                           : "条件に合う会社がありません。"}
@@ -363,69 +439,79 @@ export default function ListPage() {
                     return (
                       <React.Fragment key={c.id}>
                         <tr className={`${rowFill(c.statuses)} ${ROW_HOVER}`}>
-                          <td className={`${TD} w-12 min-w-12 pr-1 text-right text-xs tabular-nums text-neutral-400`}>
-                            {c.no ?? "–"}
-                          </td>
-                          {APPROACH_CHANNELS.map((ch, i) => (
-                            <td key={ch} className={`${TD} ${CHANNEL_COL} ${i === 0 ? "pl-2" : "px-1.5"}`}>
-                              <div className="flex items-center gap-1">
-                                {i === 0 &&
-                                  (untouched ? (
-                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" title="未対応" />
-                                  ) : (
-                                    <span className="h-1.5 w-1.5 shrink-0" />
-                                  ))}
-                                <ToneSelect
-                                  value={c.statuses[ch]}
-                                  options={CHANNEL_STATUSES[ch]}
-                                  tone={TONE[STATUS_TONE[c.statuses[ch]] ?? "gray"]}
-                                  onChange={(v) => void patch(c.id, { statuses: { [ch]: v } as Partial<ChannelStatuses> })}
+                          <td
+                            className={`${TD} w-14 min-w-14 pr-1 text-right text-xs tabular-nums text-neutral-400`}
+                          >
+                            <span className="inline-flex items-center justify-end gap-1">
+                              {untouched && (
+                                <span
+                                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500"
+                                  title="未対応"
                                 />
-                              </div>
-                            </td>
-                          ))}
-                          <td className={`${TD} ${OWNER_COL} px-1.5`}>
-                            <select
-                              value={c.assigneeId ?? ""}
-                              onChange={(e) => void patch(c.id, { assigneeId: e.target.value || null })}
-                              className={CELL_INPUT}
-                            >
-                              <option value="">未設定</option>
-                              {members.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.name}
-                                </option>
-                              ))}
-                              {c.assigneeId && !members.some((m) => m.id === c.assigneeId) && (
-                                <option value={c.assigneeId}>{c.assigneeName ?? c.assigneeId}</option>
                               )}
-                            </select>
+                              {c.no ?? "–"}
+                            </span>
                           </td>
                           <td className={`${TD} font-medium`}>
-                            <span className="whitespace-normal">{c.companyName}</span>
+                            <span className="whitespace-normal">
+                              {c.companyName}
+                            </span>
                           </td>
-                          <td className={`${TD} text-neutral-600 dark:text-neutral-300`}>
-                            {c.contactName ?? <span className="text-neutral-300">–</span>}
+                          <td
+                            className={`${TD} text-neutral-600 dark:text-neutral-300`}
+                          >
+                            {c.contactName ?? (
+                              <span className="text-neutral-300">–</span>
+                            )}
                           </td>
                           <td className={TD}>
                             {c.phone ? (
-                              <a href={`tel:${c.phone.replace(/[^\d+]/g, "")}`} className="tabular-nums hover:text-[#9e8d70]">
+                              <a
+                                href={`tel:${c.phone.replace(/[^\d+]/g, "")}`}
+                                className="tabular-nums hover:text-[#9e8d70]"
+                              >
                                 {c.phone}
                               </a>
                             ) : (
                               <span className="text-neutral-300">–</span>
                             )}
                           </td>
-                          <td className={`${TD} max-w-[20rem] truncate text-neutral-600 dark:text-neutral-300`} title={c.address ?? ""}>
-                            {c.address ?? <span className="text-neutral-300">–</span>}
-                          </td>
+                          {APPROACH_CHANNELS.map((ch) => (
+                            <td
+                              key={ch}
+                              className={`${TD} ${CHANNEL_COL} px-1.5`}
+                            >
+                              <div className="flex items-center">
+                                <ToneSelect
+                                  value={c.statuses[ch]}
+                                  options={CHANNEL_STATUSES[ch]}
+                                  tone={
+                                    TONE[STATUS_TONE[c.statuses[ch]] ?? "gray"]
+                                  }
+                                  onChange={(v) =>
+                                    void patch(c.id, {
+                                      statuses: {
+                                        [ch]: v,
+                                      } as Partial<ChannelStatuses>,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </td>
+                          ))}
                           <td className={TD}>
                             <input
                               value={memoDraft[c.id] ?? c.memo ?? ""}
-                              onChange={(e) => setMemoDraft((d) => ({ ...d, [c.id]: e.target.value }))}
+                              onChange={(e) =>
+                                setMemoDraft((d) => ({
+                                  ...d,
+                                  [c.id]: e.target.value,
+                                }))
+                              }
                               onBlur={() => {
                                 const v = memoDraft[c.id];
-                                if (v === undefined || v === (c.memo ?? "")) return;
+                                if (v === undefined || v === (c.memo ?? ""))
+                                  return;
                                 void patch(c.id, { memo: v });
                                 setMemoDraft((d) => {
                                   const next = { ...d };
@@ -437,11 +523,45 @@ export default function ListPage() {
                               className={CELL_INPUT}
                             />
                           </td>
+                          <td className={`${TD} ${OWNER_COL} px-1.5`}>
+                            <select
+                              value={c.assigneeId ?? ""}
+                              onChange={(e) =>
+                                void patch(c.id, {
+                                  assigneeId: e.target.value || null,
+                                })
+                              }
+                              className={CELL_INPUT}
+                            >
+                              <option value="">未設定</option>
+                              {members.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}
+                                </option>
+                              ))}
+                              {c.assigneeId &&
+                                !members.some((m) => m.id === c.assigneeId) && (
+                                  <option value={c.assigneeId}>
+                                    {c.assigneeName ?? c.assigneeId}
+                                  </option>
+                                )}
+                            </select>
+                          </td>
+                          <td
+                            className={`${TD} max-w-[20rem] truncate text-neutral-600 dark:text-neutral-300`}
+                            title={c.address ?? ""}
+                          >
+                            {c.address ?? (
+                              <span className="text-neutral-300">–</span>
+                            )}
+                          </td>
                           <td className={`${TD} text-xs text-neutral-500`}>
                             {c.lastActionAt ? (
                               <>
                                 <div>{shortDateTime(c.lastActionAt)}</div>
-                                <div className="text-neutral-400">{c.lastActionByName ?? ""}</div>
+                                <div className="text-neutral-400">
+                                  {c.lastActionByName ?? ""}
+                                </div>
                               </>
                             ) : (
                               <span className="text-neutral-300">–</span>
@@ -465,15 +585,23 @@ export default function ListPage() {
                                 {c.sheetNote && (
                                   <div>
                                     <dt className="text-neutral-400">
-                                      {COLUMN_FIELDS.find((f) => f.key === "sheetNote")?.label}
+                                      {
+                                        COLUMN_FIELDS.find(
+                                          (f) => f.key === "sheetNote",
+                                        )?.label
+                                      }
                                     </dt>
-                                    <dd className="whitespace-pre-wrap text-neutral-700 dark:text-neutral-200">{c.sheetNote}</dd>
+                                    <dd className="whitespace-pre-wrap text-neutral-700 dark:text-neutral-200">
+                                      {c.sheetNote}
+                                    </dd>
                                   </div>
                                 )}
                                 {extras.map(([k, v]) => (
                                   <div key={k}>
                                     <dt className="text-neutral-400">{k}</dt>
-                                    <dd className="whitespace-pre-wrap break-all text-neutral-700 dark:text-neutral-200">{v}</dd>
+                                    <dd className="whitespace-pre-wrap break-all text-neutral-700 dark:text-neutral-200">
+                                      {v}
+                                    </dd>
                                   </div>
                                 ))}
                               </dl>

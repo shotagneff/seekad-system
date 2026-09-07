@@ -383,7 +383,7 @@ export async function getList(listId: string): Promise<ApproachList | null> {
   return (res.rows[0] as ApproachList) ?? null;
 }
 
-/** リストの会社一覧。最後に動かしたものを上に、まだ触っていないものはその下に登録順で */
+/** リストの会社一覧。最後に動かしたものを上に、まだ触っていないものはその下でシートの行順（No.順）で */
 export async function listCompanies(listId: string): Promise<Company[]> {
   const res = await pool.query(
     `SELECT
@@ -398,7 +398,7 @@ export async function listCompanies(listId: string): Promise<Company[]> {
     LEFT JOIN igos_users a ON a.login_id = c.assignee_id
     LEFT JOIN igos_users b ON b.login_id = c.last_action_by
     WHERE c.list_id = $1 AND c.removed_at IS NULL
-    ORDER BY c.last_action_at DESC NULLS LAST, c.created_at ASC, c.company_name;`,
+    ORDER BY c.last_action_at DESC NULLS LAST, c.sheet_row ASC NULLS LAST, c.company_name;`,
     [listId],
   );
   type Row = Omit<Company, "statuses"> & { telStatus: string; dmStatus: string; letterStatus: string };
