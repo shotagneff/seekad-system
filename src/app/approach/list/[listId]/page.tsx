@@ -53,8 +53,8 @@ const CONTACT_LABEL =
 const CHANNEL_COL = "w-[7.25rem] min-w-[7.25rem] max-w-[7.25rem]";
 /** 見出しに「必須」を付ける手段。テレアポと DM は全社に必ず行う運用 */
 const REQUIRED_CHANNELS: readonly ApproachChannel[] = ["テレアポ", "DM"];
-/** 担当欄。姓名が見える最小幅 */
-const OWNER_COL = "w-[6.5rem] min-w-[6.5rem] max-w-[6.5rem]";
+/** 担当欄。姓名が余裕をもって見える幅 */
+const OWNER_COL = "w-[8.5rem] min-w-[8.5rem] max-w-[8.5rem]";
 
 /** 行の塗り。アポ > 返信・突破 > その他 */
 function rowFill(st: ChannelStatuses): string {
@@ -412,7 +412,12 @@ export default function ListPage() {
                         </span>
                       </th>
                     ))}
-                    <th className={`${TH} min-w-[14rem]`}>メモ</th>
+                    <th className={`${TH} min-w-[14rem]`}>
+                      メモ
+                      <span className="ml-1.5 font-normal text-[11px] text-neutral-400 dark:text-neutral-500">
+                        細かい部分を記載
+                      </span>
+                    </th>
                     <th className={`${TH} ${OWNER_COL}`}>担当</th>
                     <th className={`${TH} min-w-[16rem]`}>住所</th>
                     <th className={`${TH} ${W.date}`}>最終更新</th>
@@ -519,7 +524,7 @@ export default function ListPage() {
                                   return next;
                                 });
                               }}
-                              placeholder="メモ"
+                              placeholder="細かい部分を記載（話した内容・次回対応など）"
                               className={CELL_INPUT}
                             />
                           </td>
