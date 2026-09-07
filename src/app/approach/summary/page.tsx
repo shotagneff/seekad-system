@@ -9,7 +9,8 @@
 //   4. 人ごとの表（手段別の段階と率）と、人ごとの回数の横棒
 //   5. 直近の動き
 //
-// 「回数」は操作の数（同じ会社に2回電話すれば2）。「段階」は会社数（重複なし）。
+// 数えるのは「最後に選んだ結果」だけ。間違えて選んで直せば、直したほうが反映される。
+// 「回数」はその日に動いた会社×手段の数。「段階」は会社数（重複なし）。
 // 率はすべて会社数どうしで出す。回数で割ると、同じ会社に何度も電話するほど率が下がって実態とずれる。
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -104,7 +105,7 @@ export default function SummaryPage() {
         <PageHeader
           eyebrow="Approach List"
           title="営業別サマリー"
-          description="誰が何件動き、どこまで進み、アポが取れたか。率は会社数どうしで出します（反応率＝反応した会社 ÷ 動いた会社）。"
+          description="誰が何件動き、どこまで進み、アポが取れたか。各社の最後に選んだ結果で数えます（直した場合は直した結果）。率は会社数どうし（反応率＝反応した会社 ÷ 動いた会社）。"
         />
         <SubNav />
 
@@ -140,7 +141,7 @@ export default function SummaryPage() {
               <Kpi
                 label={`${rangeLabel}の回数`}
                 value={String(focus.total.approaches)}
-                hint={`動いた会社 ${focus.total.funnel[0]} 社`}
+                hint={`動いた会社 ${focus.total.funnel[0]} 社（日×会社×手段で数える）`}
               />
               <Kpi
                 label="反応した会社"

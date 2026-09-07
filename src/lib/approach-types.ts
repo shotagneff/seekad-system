@@ -251,58 +251,74 @@ export function pct(numer: number, denom: number): string {
 /**
  * 履歴を、人ごと・手段ごと・日ごとに集計する。
  *
- * 段階（funnel）は会社単位で数える。同じ会社に「送信済み → 返信あり」と2回記録しても、
- * 送信1社・返信1社。回数（approaches）は操作の数なので2になる。
+ * **最後に選んだ結果だけを見る。** 同じ会社・同じ手段に複数回記録があれば、
+ * 期間内で一番新しい記録の結果を採用する。間違えて「アポ獲得」にしてから
+ * 「不在」に直した場合、アポには数えない。「未対応」に戻せば何も数えない。
+ *
+ * - 回数: 「その日に動いた会社×手段」の数（同じ日に同じ会社へ2回記録しても1）
+ * - 段階（funnel）: 会社単位。最後の結果の段階までを到達とみなす
+ * - 全員の合計は、担当に関係なく会社×手段ごとに最後の結果を採用する
  */
 export function aggregateActions(rows: RawAction[], fromDate: string, toDate: string): SummaryData {
   const people = new Map<string, SalesSummaryRow>();
   const overall = emptyRow("all", "全員");
-  // 会社×手段ごとの最高到達段階（人別と全体）
-  const best = new Map<string, number>();
 
-  const bump = (row: SalesSummaryRow, ch: ApproachChannel) => {
-    row.byChannel[ch].approaches += 1;
-    row.total.approaches += 1;
-  };
-  const noteBest = (key: string, rank: number) => {
-    best.set(key, Math.max(best.get(key) ?? 0, rank));
-  };
-
-  const daily = new Map<string, DailyPoint>();
+  // 会社×手段ごとの「最後の結果」（人別と全体）。rows は古い順に並んでいる前提で上書きする
+  const latest = new Map<string, { rank: number; ch: ApproachChannel }>();
+  // 日×会社×手段ごとの「その日の最後の結果」（回数と日別の元）
+  const latestOfDay = new Map<string, { rank: number; ch: ApproachChannel; actorId: string; date: string }>();
 
   for (const r of rows) {
+    if (!people.has(r.actorId)) people.set(r.actorId, emptyRow(r.actorId, r.actorName));
     const rank = stageRank(r.channel, r.status);
-    if (rank === 0) continue;
-
-    let row = people.get(r.actorId);
-    if (!row) {
-      row = emptyRow(r.actorId, r.actorName);
-      people.set(r.actorId, row);
-    }
-    bump(row, r.channel);
-    bump(overall, r.channel);
-    noteBest(`${r.actorId}|${r.companyId}|${r.channel}`, rank);
-    noteBest(`all|${r.companyId}|${r.channel}`, rank);
-
-    let d = daily.get(r.date);
-    if (!d) {
-      d = { date: r.date, label: "", weekend: false, total: 0, byChannel: { テレアポ: 0, DM: 0, 手紙: 0 }, appointments: 0 };
-      daily.set(r.date, d);
-    }
-    d.total += 1;
-    d.byChannel[r.channel] += 1;
-    if (rank === 3) d.appointments += 1;
+    latest.set(`${r.actorId}|${r.companyId}|${r.channel}`, { rank, ch: r.channel });
+    latest.set(`all|${r.companyId}|${r.channel}`, { rank, ch: r.channel });
+    latestOfDay.set(`${r.actorId}|${r.companyId}|${r.channel}|${r.date}`, {
+      rank,
+      ch: r.channel,
+      actorId: r.actorId,
+      date: r.date,
+    });
   }
 
-  for (const [key, rank] of best) {
-    const [actorId, , ch] = key.split("|") as [string, string, ApproachChannel];
+  const daily = new Map<string, DailyPoint>();
+  const dayOf = (date: string): DailyPoint => {
+    let d = daily.get(date);
+    if (!d) {
+      d = { date, label: "", weekend: false, total: 0, byChannel: { テレアポ: 0, DM: 0, 手紙: 0 }, appointments: 0 };
+      daily.set(date, d);
+    }
+    return d;
+  };
+
+  for (const v of latestOfDay.values()) {
+    if (v.rank === 0) continue; // その日の最後が「未対応」なら、その日は動いていない扱い
+    const row = people.get(v.actorId);
+    if (row) {
+      row.byChannel[v.ch].approaches += 1;
+      row.total.approaches += 1;
+    }
+    overall.byChannel[v.ch].approaches += 1;
+    overall.total.approaches += 1;
+    const d = dayOf(v.date);
+    d.total += 1;
+    d.byChannel[v.ch] += 1;
+    if (v.rank === 3) d.appointments += 1;
+  }
+
+  for (const [key, v] of latest) {
+    if (v.rank === 0) continue;
+    const actorId = key.split("|")[0];
     const row = actorId === "all" ? overall : people.get(actorId);
     if (!row) continue;
-    for (let stage = 1; stage <= rank; stage++) {
-      row.byChannel[ch].funnel[stage - 1] += 1;
+    for (let stage = 1; stage <= v.rank; stage++) {
+      row.byChannel[v.ch].funnel[stage - 1] += 1;
       row.total.funnel[stage - 1] += 1;
     }
   }
+
+  // 動きが残っていない人（全部「未対応」に戻した等）は出さない
+  for (const [id, row] of people) if (row.total.approaches === 0) people.delete(id);
 
   // 日付は期間内を埋めて連続させる（動きのない日も 0 で出す）
   const points: DailyPoint[] = [];
