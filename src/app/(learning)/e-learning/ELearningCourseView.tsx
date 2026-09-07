@@ -524,8 +524,11 @@ export function ELearningCourseView({ courseId, courseTitle, courseSubtitle, sho
     }
   };
 
-  // sectionId ごとに、「第◯回」の数字が小さいものが左に来るようにソート
-  // episodeLabel が取れない場合のみ、古い順（updatedAt 昇順）→ 新しい順（右側）で並べる
+  // sectionId ごとに並べる。
+  // - カリキュラム型コース（onboarding / sales / ai）: 「第◯回」の数字が小さいものが左。
+  //   番号が無い場合は新しいもの（updatedAt 降順）が左に来るようにする。
+  // - 商談記録（callforce）は事例集なので、常に新しいものを左に並べる。
+  const newestFirstCourse = courseId === "callforce";
   const sorted = useMemo(() => {
     return [...filteredVideos].sort((a, b) => {
       const sa = a.sectionId ?? 0;
@@ -534,19 +537,24 @@ export function ELearningCourseView({ courseId, courseTitle, courseSubtitle, sho
 
       const ea = parseEpisodeNumber(a.episodeLabel);
       const eb = parseEpisodeNumber(b.episodeLabel);
+      const da = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const db = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+
+      if (newestFirstCourse) {
+        if (da !== db) return db - da; // 新しいものが左
+        if (ea !== null && eb !== null && ea !== eb) return eb - ea;
+        return (a.title || "").localeCompare(b.title || "");
+      }
 
       if (ea !== null && eb !== null && ea !== eb) {
         return ea - eb; // 第1回, 第2回, ... の順に並べる
       }
 
-      const da = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const db = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-
-      if (da !== db) return da - db; // 古いものが左、新しいものが右
+      if (da !== db) return db - da; // 新しいものが左、古いものが右
 
       return (a.title || "").localeCompare(b.title || "");
     });
-  }, [filteredVideos]);
+  }, [filteredVideos, newestFirstCourse]);
 
   const groupedBySection = useMemo(() => {
     const map = new Map<number, Video[]>();
