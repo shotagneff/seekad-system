@@ -9,16 +9,27 @@ import { pool } from "./db";
 import { verifySessionToken } from "./auth-token";
 import { ensureApproachTables } from "./schema";
 import {
+  APPROACH_CHANNELS,
   COLUMN_FIELDS,
-  RESPONDED_STATUSES,
+  aggregateActions,
+  toStatus,
   type ApproachAction,
+  type ApproachChannel,
   type ApproachList,
+  type ApproachStatus,
+  type ChannelStatuses,
   type ColumnMap,
   type Company,
   type Industry,
-  type SalesSummaryRow,
+  type RawAction,
+  type SummaryData,
   type SummaryRange,
 } from "./approach-types";
+
+/** 「まだ何もしていない」会社の条件（SQL） */
+const UNTOUCHED_SQL = `tel_status = '未対応' AND dm_status = '未送信' AND letter_status = '未送付'`;
+/** どれかの手段でアポが取れている会社の条件（SQL） */
+const APPOINTED_SQL = `(tel_status = 'アポ獲得' OR dm_status = 'アポ獲得' OR letter_status = 'アポ獲得')`;
 
 const COOKIE_NAME = "igos_session";
 
@@ -339,8 +350,8 @@ const LIST_SELECT = `
   LEFT JOIN (
     SELECT list_id,
       COUNT(*) AS total,
-      COUNT(*) FILTER (WHERE status = '未対応') AS untouched,
-      COUNT(*) FILTER (WHERE status = 'アポ獲得') AS appointments
+      COUNT(*) FILTER (WHERE ${UNTOUCHED_SQL}) AS untouched,
+      COUNT(*) FILTER (WHERE ${APPOINTED_SQL}) AS appointments
     FROM approach_companies WHERE removed_at IS NULL GROUP BY list_id
   ) c ON c.list_id = l.id
 `;
@@ -352,7 +363,7 @@ export async function listIndustries(): Promise<Industry[]> {
       i.id, i.name, i.sort_order AS "sortOrder",
       COUNT(DISTINCT l.id)::int AS "listCount",
       COUNT(c.id) FILTER (WHERE c.removed_at IS NULL)::int AS "companyCount",
-      COUNT(c.id) FILTER (WHERE c.removed_at IS NULL AND c.status = '未対応')::int AS "untouchedCount"
+      COUNT(c.id) FILTER (WHERE c.removed_at IS NULL AND c.tel_status = '未対応' AND c.dm_status = '未送信' AND c.letter_status = '未送付')::int AS "untouchedCount"
     FROM approach_industries i
     LEFT JOIN approach_lists l ON l.industry_id = i.id
     LEFT JOIN approach_companies c ON c.list_id = l.id
@@ -381,7 +392,7 @@ export async function listCompanies(listId: string): Promise<Company[]> {
       c.id, c.list_id AS "listId", c.company_name AS "companyName", c.phone, c.address, c.website, c.linkedin,
       c.contact_name AS "contactName", c.sheet_note AS "sheetNote", c.raw,
       c.assignee_id AS "assigneeId", COALESCE(NULLIF(a.display_name, ''), a.login_id) AS "assigneeName",
-      c.channel, c.status, c.memo,
+      c.tel_status AS "telStatus", c.dm_status AS "dmStatus", c.letter_status AS "letterStatus", c.memo,
       c.last_action_at AS "lastActionAt", c.last_action_by AS "lastActionBy",
       COALESCE(NULLIF(b.display_name, ''), b.login_id) AS "lastActionByName",
       c.created_at AS "createdAt"
@@ -392,7 +403,15 @@ export async function listCompanies(listId: string): Promise<Company[]> {
     ORDER BY c.last_action_at DESC NULLS LAST, c.created_at ASC, c.company_name;`,
     [listId],
   );
-  return res.rows as Company[];
+  type Row = Omit<Company, "statuses"> & { telStatus: string; dmStatus: string; letterStatus: string };
+  return (res.rows as Row[]).map(({ telStatus, dmStatus, letterStatus, ...rest }) => ({
+    ...rest,
+    statuses: {
+      テレアポ: toStatus("テレアポ", telStatus),
+      DM: toStatus("DM", dmStatus),
+      手紙: toStatus("手紙", letterStatus),
+    },
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -401,30 +420,53 @@ export async function listCompanies(listId: string): Promise<Company[]> {
 
 export type CompanyPatch = {
   assigneeId?: string | null;
-  channel?: string;
-  status?: string;
+  /** 手段ごとの結果。渡した手段だけ変える */
+  statuses?: Partial<ChannelStatuses>;
   memo?: string | null;
 };
 
 /**
- * 担当・手段・状況・メモを更新する。
- * 手段か状況が変わったときだけ履歴（approach_actions）を1行残し、
+ * 担当・手段ごとの結果・メモを更新する。
+ * 結果が変わった手段ごとに履歴（approach_actions）を1行残し、
  * 「最後に動かした人・日時」を更新する。担当が空なら操作した人を担当にする。
  */
 export async function updateCompany(companyId: string, actorId: string, patch: CompanyPatch): Promise<void> {
   const cur = await pool.query(
-    `SELECT list_id, assignee_id, channel, status, memo FROM approach_companies WHERE id = $1 AND removed_at IS NULL;`,
+    `SELECT list_id, assignee_id, tel_status, dm_status, letter_status, memo
+     FROM approach_companies WHERE id = $1 AND removed_at IS NULL;`,
     [companyId],
   );
   const row = cur.rows[0] as
-    | { list_id: string; assignee_id: string | null; channel: string; status: string; memo: string | null }
+    | {
+        list_id: string;
+        assignee_id: string | null;
+        tel_status: string;
+        dm_status: string;
+        letter_status: string;
+        memo: string | null;
+      }
     | undefined;
   if (!row) throw new Error("会社が見つかりません");
 
-  const nextChannel = patch.channel ?? row.channel;
-  const nextStatus = patch.status ?? row.status;
+  const current: ChannelStatuses = {
+    テレアポ: toStatus("テレアポ", row.tel_status),
+    DM: toStatus("DM", row.dm_status),
+    手紙: toStatus("手紙", row.letter_status),
+  };
+  const next: ChannelStatuses = { ...current };
+  const changed: ApproachChannel[] = [];
+  for (const ch of APPROACH_CHANNELS) {
+    const v = patch.statuses?.[ch];
+    if (v === undefined) continue;
+    const st: ApproachStatus = toStatus(ch, v);
+    if (st !== current[ch]) {
+      next[ch] = st;
+      changed.push(ch);
+    }
+  }
+
   const nextMemo = patch.memo === undefined ? row.memo : patch.memo;
-  const actionHappened = nextChannel !== row.channel || nextStatus !== row.status;
+  const actionHappened = changed.length > 0;
 
   let nextAssignee = patch.assigneeId === undefined ? row.assignee_id : patch.assigneeId;
   if (actionHappened && !nextAssignee) nextAssignee = actorId;
@@ -434,18 +476,18 @@ export async function updateCompany(companyId: string, actorId: string, patch: C
     await client.query("BEGIN");
     await client.query(
       `UPDATE approach_companies SET
-         assignee_id = $2, channel = $3, status = $4, memo = $5,
-         last_action_at = CASE WHEN $6 THEN NOW() ELSE last_action_at END,
-         last_action_by = CASE WHEN $6 THEN $7 ELSE last_action_by END,
+         assignee_id = $2, tel_status = $3, dm_status = $4, letter_status = $5, memo = $6,
+         last_action_at = CASE WHEN $7 THEN NOW() ELSE last_action_at END,
+         last_action_by = CASE WHEN $7 THEN $8 ELSE last_action_by END,
          updated_at = NOW()
        WHERE id = $1;`,
-      [companyId, nextAssignee, nextChannel, nextStatus, nextMemo, actionHappened, actorId],
+      [companyId, nextAssignee, next.テレアポ, next.DM, next.手紙, nextMemo, actionHappened, actorId],
     );
-    if (actionHappened) {
+    for (const ch of changed) {
       await client.query(
         `INSERT INTO approach_actions (id, company_id, list_id, actor_id, channel, status, memo)
          VALUES ($1, $2, $3, $4, $5, $6, $7);`,
-        [randomUUID(), companyId, row.list_id, actorId, nextChannel, nextStatus, nextMemo],
+        [randomUUID(), companyId, row.list_id, actorId, ch, next[ch], nextMemo],
       );
     }
     await client.query("COMMIT");
@@ -475,31 +517,40 @@ function rangeSql(range: SummaryRange): string {
   }
 }
 
-/**
- * 営業ごとのアプローチ件数・反応・アポ。
- * 「アプローチ」は状況を未対応以外に変えた操作1回。同じ会社に2回電話すれば2件。
- */
-export async function salesSummary(range: SummaryRange): Promise<SalesSummaryRow[]> {
-  await ensureApproachTables();
-  const responded = RESPONDED_STATUSES.map((s) => `'${s}'`).join(",");
+/** 期間の開始日・終了日（JST, yyyy-mm-dd）。全期間は最初の履歴の日から */
+async function rangeDates(range: SummaryRange): Promise<{ from: string; to: string }> {
   const res = await pool.query(`
     SELECT
+      to_char((NOW() AT TIME ZONE 'Asia/Tokyo')::date, 'YYYY-MM-DD') AS today,
+      to_char(date_trunc('week', NOW() AT TIME ZONE 'Asia/Tokyo')::date, 'YYYY-MM-DD') AS week,
+      to_char(date_trunc('month', NOW() AT TIME ZONE 'Asia/Tokyo')::date, 'YYYY-MM-DD') AS month,
+      to_char(COALESCE((SELECT MIN(created_at) FROM approach_actions) AT TIME ZONE 'Asia/Tokyo', NOW() AT TIME ZONE 'Asia/Tokyo')::date, 'YYYY-MM-DD') AS first;`);
+  const r = res.rows[0] as { today: string; week: string; month: string; first: string };
+  const from = range === "today" ? r.today : range === "week" ? r.week : range === "month" ? r.month : r.first;
+  return { from, to: r.today };
+}
+
+/**
+ * 営業別サマリー。期間内の履歴を読み、人ごと・手段ごと・日ごとに集計する。
+ * 集計の定義は approach-types.ts の aggregateActions を参照。
+ */
+export async function salesSummary(range: SummaryRange): Promise<SummaryData & { from: string; to: string }> {
+  await ensureApproachTables();
+  const { from, to } = await rangeDates(range);
+  const res = await pool.query(
+    `SELECT
       a.actor_id AS "actorId",
       COALESCE(NULLIF(u.display_name, ''), a.actor_id) AS "actorName",
-      COUNT(*)::int AS approaches,
-      COUNT(*) FILTER (WHERE a.status IN (${responded}))::int AS responded,
-      COUNT(*) FILTER (WHERE a.status = 'アポ獲得')::int AS appointments,
-      jsonb_object_agg(a.channel, cnt) AS "byChannel"
-    FROM (
-      SELECT actor_id, status, channel, created_at,
-        COUNT(*) OVER (PARTITION BY actor_id, channel) AS cnt
-      FROM approach_actions a
-      WHERE ${rangeSql(range)} AND a.status <> '未対応'
-    ) a
+      a.company_id AS "companyId",
+      a.channel, a.status,
+      to_char(a.created_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') AS date
+    FROM approach_actions a
     LEFT JOIN igos_users u ON u.login_id = a.actor_id
-    GROUP BY a.actor_id, u.display_name
-    ORDER BY approaches DESC, "actorName";`);
-  return res.rows as SalesSummaryRow[];
+    WHERE ${rangeSql(range)} AND a.channel IN ('テレアポ', 'DM', '手紙')
+    ORDER BY a.created_at;`,
+  );
+  const rows = (res.rows as RawAction[]).filter((r) => APPROACH_CHANNELS.includes(r.channel));
+  return { ...aggregateActions(rows, from, to), from, to };
 }
 
 /** 直近の操作履歴（新しい順） */
@@ -516,7 +567,7 @@ export async function recentActions(range: SummaryRange, limit = 100): Promise<A
     JOIN approach_lists l ON l.id = a.list_id
     JOIN approach_industries i ON i.id = l.industry_id
     LEFT JOIN igos_users u ON u.login_id = a.actor_id
-    WHERE ${rangeSql(range)}
+    WHERE ${rangeSql(range)} AND a.channel IN ('テレアポ', 'DM', '手紙')
     ORDER BY a.created_at DESC
     LIMIT $1;`,
     [limit],

@@ -2,9 +2,10 @@
 
 // 会社一覧（→ /approach/list/[listId]）。業界×都道府県のスプレッドシート1枚ぶん。
 //
-// 営業がここで電話・DM・手紙をしながら、担当・手段・状況・メモをその場で変える。
-// 変えた瞬間に保存し、履歴（approach_actions）が残る。
-// 最後に動かした会社が上に来る。未対応は赤い印で、残りがひと目で分かるようにする。
+// 営業がここで電話・DM・手紙をしながら、手段ごとの結果・担当・メモをその場で変える。
+// テレアポ / DM / 手紙 は別々の欄。1社に対して複数の手段を使うので、
+// 「手段を1つ選んで状況を1つ」にすると片方の結果が消える。
+// 変えた瞬間に保存し、履歴（approach_actions）が残る。最後に動かした会社が上に来る。
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -24,11 +25,14 @@ import {
 } from "@/components/table-ui";
 import {
   APPROACH_CHANNELS,
-  APPROACH_STATUSES,
+  CHANNEL_STATUSES,
   COLUMN_FIELDS,
   STATUS_TONE,
+  hasAppointment,
+  isUntouched,
+  type ApproachChannel,
   type ApproachList,
-  type ApproachStatus,
+  type ChannelStatuses,
   type Company,
 } from "@/lib/approach-types";
 import type { Member } from "@/lib/member";
@@ -37,14 +41,15 @@ import { Breadcrumb, Notice, SubNav, readJson, shortDateTime } from "../../ui";
 type Filter = "全て" | "未対応" | "対応済み" | "アポ獲得";
 const FILTERS: Filter[] = ["全て", "未対応", "対応済み", "アポ獲得"];
 
-const STATUS_FILL: Record<ApproachStatus, string> = {
-  未対応: FILL.none,
-  不在: FILL.none,
-  受付突破できず: FILL.gray,
-  "突破・アポ不可": FILL.orange,
-  返信あり: FILL.violet,
-  アポ獲得: FILL.yellow,
-};
+const CONTACT_LABEL = COLUMN_FIELDS.find((f) => f.key === "contactName")?.label ?? "代表取締役";
+
+/** 行の塗り。アポ > 返信・突破 > その他 */
+function rowFill(st: ChannelStatuses): string {
+  if (hasAppointment(st)) return FILL.yellow;
+  if (APPROACH_CHANNELS.some((ch) => st[ch] === "返信あり")) return FILL.violet;
+  if (st.テレアポ === "突破・アポ不可") return FILL.orange;
+  return FILL.none;
+}
 
 function ExternalLink({ href, label }: { href: string | null; label: string }) {
   if (!href) return <span className="text-neutral-300">–</span>;
@@ -121,24 +126,25 @@ export default function ListPage() {
     [members],
   );
 
-  /** 1件を更新。画面は先に書き換え、失敗したら読み直す */
+  /** 1件を更新。画面は先に書き換え、失敗したら元に戻す */
   const patch = useCallback(
-    async (id: string, body: { assigneeId?: string | null; channel?: string; status?: string; memo?: string | null }) => {
+    async (
+      id: string,
+      body: { assigneeId?: string | null; statuses?: Partial<ChannelStatuses>; memo?: string | null },
+    ) => {
       const before = companies;
       const now = new Date().toISOString();
       setCompanies((prev) =>
         prev.map((c) => {
           if (c.id !== id) return c;
-          const actionHappened =
-            (body.channel !== undefined && body.channel !== c.channel) ||
-            (body.status !== undefined && body.status !== c.status);
+          const statuses = { ...c.statuses, ...(body.statuses ?? {}) };
+          const actionHappened = APPROACH_CHANNELS.some((ch) => statuses[ch] !== c.statuses[ch]);
           const assigneeId = body.assigneeId === undefined ? c.assigneeId : body.assigneeId;
           return {
             ...c,
             assigneeId,
             assigneeName: memberName(assigneeId),
-            channel: (body.channel ?? c.channel) as Company["channel"],
-            status: (body.status ?? c.status) as Company["status"],
+            statuses,
             memo: body.memo === undefined ? c.memo : body.memo,
             lastActionAt: actionHappened ? now : c.lastActionAt,
           };
@@ -186,9 +192,10 @@ export default function ListPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return companies.filter((c) => {
-      if (filter === "未対応" && c.status !== "未対応") return false;
-      if (filter === "対応済み" && c.status === "未対応") return false;
-      if (filter === "アポ獲得" && c.status !== "アポ獲得") return false;
+      const untouched = isUntouched(c.statuses);
+      if (filter === "未対応" && !untouched) return false;
+      if (filter === "対応済み" && untouched) return false;
+      if (filter === "アポ獲得" && !hasAppointment(c.statuses)) return false;
       if (assigneeFilter && c.assigneeId !== assigneeFilter) return false;
       if (q) {
         const hay = [c.companyName, c.phone, c.address, c.contactName, c.memo, c.sheetNote]
@@ -202,9 +209,15 @@ export default function ListPage() {
   }, [companies, filter, assigneeFilter, query]);
 
   const counts = useMemo(() => {
-    const untouched = companies.filter((c) => c.status === "未対応").length;
-    const appointments = companies.filter((c) => c.status === "アポ獲得").length;
-    return { total: companies.length, untouched, done: companies.length - untouched, appointments };
+    const untouched = companies.filter((c) => isUntouched(c.statuses)).length;
+    const appointments = companies.filter((c) => hasAppointment(c.statuses)).length;
+    const byChannel = Object.fromEntries(
+      APPROACH_CHANNELS.map((ch) => [
+        ch,
+        companies.filter((c) => c.statuses[ch] !== CHANNEL_STATUSES[ch][0]).length,
+      ]),
+    ) as Record<ApproachChannel, number>;
+    return { total: companies.length, untouched, done: companies.length - untouched, appointments, byChannel };
   }, [companies]);
 
   /** 対応付けした列以外のシートの値。詳細行に出す */
@@ -214,6 +227,7 @@ export default function ListPage() {
   };
 
   const title = list ? `${list.industryName} / ${list.prefecture}` : "アプローチリスト";
+  const colCount = 12;
 
   return (
     <main className={PAGE_MAIN}>
@@ -221,7 +235,7 @@ export default function ListPage() {
         <PageHeader
           eyebrow="Approach List"
           title={title}
-          description={list?.name ?? "担当・手段・状況を変えるとその場で保存され、営業別サマリーに反映されます。"}
+          description={list?.name ?? "テレアポ・DM・手紙それぞれの結果を変えるとその場で保存され、営業別サマリーに反映されます。"}
           action={
             list && (
               <div className="flex flex-wrap gap-2">
@@ -258,11 +272,24 @@ export default function ListPage() {
 
         {list && (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Kpi label="会社数" value={String(counts.total)} hint={list.lastSyncedAt ? `取込 ${shortDateTime(list.lastSyncedAt)}` : "未取込"} />
-              <Kpi label="未対応" value={String(counts.untouched)} hint="まだ誰も動いていない" />
-              <Kpi label="対応済み" value={String(counts.done)} hint="何らかのアプローチ済み" />
-              <Kpi label="アポ獲得" value={String(counts.appointments)} hint={counts.total ? `${Math.round((counts.appointments / counts.total) * 1000) / 10}%` : "–"} />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <Kpi
+                label="会社数"
+                value={String(counts.total)}
+                hint={list.lastSyncedAt ? `取込 ${shortDateTime(list.lastSyncedAt)}` : "未取込"}
+              />
+              <Kpi label="未対応" value={String(counts.untouched)} hint="どの手段もまだ" />
+              <Kpi label="テレアポ済" value={String(counts.byChannel.テレアポ)} hint="コールした会社" />
+              <Kpi
+                label="DM・手紙済"
+                value={String(counts.byChannel.DM + counts.byChannel.手紙)}
+                hint={`DM ${counts.byChannel.DM} / 手紙 ${counts.byChannel.手紙}`}
+              />
+              <Kpi
+                label="アポ獲得"
+                value={String(counts.appointments)}
+                hint={counts.total ? `${Math.round((counts.appointments / counts.total) * 1000) / 10}%` : "–"}
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -294,15 +321,18 @@ export default function ListPage() {
               <table className="min-w-full">
                 <thead className="border-b border-neutral-100 dark:border-neutral-800">
                   <tr>
-                    <th className={`${TH} ${W.phase}`}>状況</th>
-                    <th className={`${TH} ${W.channel}`}>手段</th>
+                    {APPROACH_CHANNELS.map((ch) => (
+                      <th key={ch} className={`${TH} ${W.phase}`}>
+                        {ch}
+                      </th>
+                    ))}
                     <th className={`${TH} ${W.person}`}>担当</th>
                     <th className={`${TH} min-w-[14rem]`}>会社名</th>
                     <th className={`${TH} ${W.phone}`}>電話番号</th>
                     <th className={`${TH} min-w-[16rem]`}>住所</th>
                     <th className={TH}>HP</th>
                     <th className={TH}>LinkedIn</th>
-                    <th className={`${TH} ${W.person}`}>先方担当</th>
+                    <th className={`${TH} ${W.person}`}>{CONTACT_LABEL}</th>
                     <th className={`${TH} min-w-[14rem]`}>メモ</th>
                     <th className={`${TH} ${W.date}`}>最終更新</th>
                     <th className={TH}></th>
@@ -311,7 +341,7 @@ export default function ListPage() {
                 <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="px-5 py-8 text-center text-sm text-neutral-500">
+                      <td colSpan={colCount + 1} className="px-5 py-8 text-center text-sm text-neutral-500">
                         {companies.length === 0
                           ? "会社がまだありません。「シートから再取り込み」を押してください。"
                           : "条件に合う会社がありません。"}
@@ -321,35 +351,28 @@ export default function ListPage() {
                   {filtered.map((c) => {
                     const extras = extraEntries(c);
                     const isOpen = openId === c.id;
+                    const untouched = isUntouched(c.statuses);
                     return (
                       <React.Fragment key={c.id}>
-                        <tr className={`${STATUS_FILL[c.status] ?? FILL.none} ${ROW_HOVER}`}>
-                          <td className={TD}>
-                            <div className="flex items-center gap-2">
-                              {c.status === "未対応" && (
-                                <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" title="未対応" />
-                              )}
-                              <ToneSelect
-                                value={c.status}
-                                options={APPROACH_STATUSES}
-                                tone={TONE[STATUS_TONE[c.status] ?? "gray"]}
-                                onChange={(v) => void patch(c.id, { status: v })}
-                              />
-                            </div>
-                          </td>
-                          <td className={TD}>
-                            <select
-                              value={c.channel}
-                              onChange={(e) => void patch(c.id, { channel: e.target.value })}
-                              className={CELL_INPUT}
-                            >
-                              {APPROACH_CHANNELS.map((ch) => (
-                                <option key={ch} value={ch}>
-                                  {ch}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
+                        <tr className={`${rowFill(c.statuses)} ${ROW_HOVER}`}>
+                          {APPROACH_CHANNELS.map((ch, i) => (
+                            <td key={ch} className={TD}>
+                              <div className="flex items-center gap-2">
+                                {i === 0 &&
+                                  (untouched ? (
+                                    <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" title="未対応" />
+                                  ) : (
+                                    <span className="h-2 w-2 shrink-0" />
+                                  ))}
+                                <ToneSelect
+                                  value={c.statuses[ch]}
+                                  options={CHANNEL_STATUSES[ch]}
+                                  tone={TONE[STATUS_TONE[c.statuses[ch]] ?? "gray"]}
+                                  onChange={(v) => void patch(c.id, { statuses: { [ch]: v } as Partial<ChannelStatuses> })}
+                                />
+                              </div>
+                            </td>
+                          ))}
                           <td className={TD}>
                             <select
                               value={c.assigneeId ?? ""}
@@ -432,7 +455,7 @@ export default function ListPage() {
                         </tr>
                         {isOpen && (
                           <tr className="bg-neutral-50/70 dark:bg-neutral-900/60">
-                            <td colSpan={12} className="px-5 py-3">
+                            <td colSpan={colCount + 1} className="px-5 py-3">
                               <dl className="grid gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2 lg:grid-cols-3">
                                 {c.sheetNote && (
                                   <div>

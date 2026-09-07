@@ -540,6 +540,10 @@ export async function ensureApproachTables(): Promise<void> {
     );
   `);
   await pool.query('CREATE INDEX IF NOT EXISTS idx_approach_companies_list ON approach_companies (list_id);');
+  // 2026-09-07: 「手段を1つ選んで状況を1つ」から「手段ごとに結果」へ。channel / status 列は使わない（残置）
+  await pool.query(`ALTER TABLE approach_companies ADD COLUMN IF NOT EXISTS tel_status TEXT NOT NULL DEFAULT '未対応';`);
+  await pool.query(`ALTER TABLE approach_companies ADD COLUMN IF NOT EXISTS dm_status TEXT NOT NULL DEFAULT '未送信';`);
+  await pool.query(`ALTER TABLE approach_companies ADD COLUMN IF NOT EXISTS letter_status TEXT NOT NULL DEFAULT '未送付';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS approach_actions (
       id TEXT PRIMARY KEY,

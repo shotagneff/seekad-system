@@ -1,8 +1,8 @@
-// 会社1件の担当・手段・状況・メモを更新する。操作した人は Cookie から取る。
+// 会社1件の担当・手段ごとの結果・メモを更新する。操作した人は Cookie から取る。
 import { NextRequest, NextResponse } from "next/server";
 import { hasDatabase } from "@/lib/db";
 import { getLoginId, updateCompany } from "@/lib/approach";
-import { toChannel, toStatus } from "@/lib/approach-types";
+import { APPROACH_CHANNELS, toStatus, type ChannelStatuses } from "@/lib/approach-types";
 
 export const runtime = "nodejs";
 
@@ -14,16 +14,23 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const body = (await req.json().catch(() => ({}))) as {
     assigneeId?: string | null;
-    channel?: string;
-    status?: string;
+    statuses?: Partial<Record<string, string>>;
     memo?: string | null;
   };
+
+  let statuses: Partial<ChannelStatuses> | undefined;
+  if (body.statuses && typeof body.statuses === "object") {
+    statuses = {};
+    for (const ch of APPROACH_CHANNELS) {
+      const v = body.statuses[ch];
+      if (v !== undefined) statuses[ch] = toStatus(ch, v);
+    }
+  }
 
   try {
     await updateCompany(id, loginId, {
       assigneeId: body.assigneeId === undefined ? undefined : body.assigneeId || null,
-      channel: body.channel === undefined ? undefined : toChannel(body.channel),
-      status: body.status === undefined ? undefined : toStatus(body.status),
+      statuses,
       memo: body.memo === undefined ? undefined : String(body.memo ?? "").trim() || null,
     });
     return NextResponse.json({ ok: true });
