@@ -86,7 +86,7 @@ export function AppointmentDashboard({ data }: { data: SalesData }) {
             </div>
           }
         >
-          <TrendChart points={trendPoints} series={SERIES} mode="line" showLine={false} />
+          <TrendChart points={trendPoints} series={SERIES} mode="line" showLine={false} showValues />
         </Card>
       </section>
 
@@ -99,7 +99,14 @@ export function AppointmentDashboard({ data }: { data: SalesData }) {
             </span>
           }
         >
-          <TrendChart points={monthlyRates} series={RATE_SERIES} mode="line" showLine={false} valueFormat="percent" />
+          <TrendChart
+            points={monthlyRates}
+            series={RATE_SERIES}
+            mode="line"
+            showLine={false}
+            valueFormat="percent"
+            showValues
+          />
           <p className="mt-2 text-[11px] text-neutral-400">
             その月に起きた件数どうしで割っています。分母が 0 の月は線が途切れます
           </p>

@@ -7,6 +7,7 @@
 //   mode="group" … 日ごとに横並び棒（アポ→案件化→成約のように包含関係で積み上げられないもの）
 //   mode="line"  … 系列ごとの折れ線。値が null の点は打たず線を途切れさせる（率の分母 0 など）
 //   valueFormat="percent" … 軸と吹き出しを % で出す（率の推移）
+//   showValues … line モードで各点の横に値を書く（「3件」「20%」が読み取れるように）
 //
 // グラフのライブラリは足していない。この1枚のために依存を増やすとバンドルが重くなる。SVG で足りる。
 
@@ -38,6 +39,25 @@ function barPath(x: number, y: number, w: number, h: number, r: number): string 
   );
 }
 
+/**
+ * 1つの x 位置に並ぶ複数系列の値ラベルの y を決める。
+ * 基本は点の上。上の点のラベルと重なるときだけ点の下に逃がす。
+ * 同じ日にアポ獲得と案件化が同じ件数だと点が重なるので、その対策。
+ */
+function placeValueLabels(items: { py: number }[]): number[] {
+  const order = items.map((it, i) => ({ i, py: it.py })).sort((a, b) => a.py - b.py);
+  const out = new Array<number>(items.length);
+  let prev = -Infinity;
+  for (const { i, py } of order) {
+    let ly = py - 6;
+    if (ly < prev + 9) ly = py + 12;
+    if (ly < prev + 9) ly = prev + 9;
+    out[i] = ly;
+    prev = ly;
+  }
+  return out;
+}
+
 export function TrendChart({
   points,
   series,
@@ -45,6 +65,7 @@ export function TrendChart({
   showLine = true,
   lineLabel = "対応済み",
   valueFormat = "count",
+  showValues = false,
 }: {
   points: TrendDatum[];
   series: TrendSeries[];
@@ -52,6 +73,7 @@ export function TrendChart({
   showLine?: boolean;
   lineLabel?: string;
   valueFormat?: "count" | "percent";
+  showValues?: boolean;
 }) {
   const clipId = useId();
   const [hover, setHover] = useState<number | null>(null);
@@ -79,7 +101,8 @@ export function TrendChart({
   const H = 220;
   const padL = isPercent ? 34 : 28;
   const padR = 8;
-  const padT = 10;
+  // 値を書くときは一番上の点の上にも文字が乗るので、上を空けておく
+  const padT = showValues && mode === "line" ? 18 : 10;
   const padB = 34;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
@@ -200,6 +223,40 @@ export function TrendChart({
                   </g>
                 );
               })}
+              {/* 各点の値。線の上に乗るので最後に描く。文字の縁取りで線と重なっても読める */}
+              {showValues &&
+                points.map((p, i) => {
+                  const items = series
+                    .map((s) => ({ s, v: p.byKind[s.key] }))
+                    .filter((it): it is { s: TrendSeries; v: number } => {
+                      if (it.v === null || it.v === undefined) return false;
+                      return isPercent || it.v > 0;
+                    })
+                    .map((it) => ({ ...it, py: y(it.v) }));
+                  if (items.length === 0) return null;
+                  const ys = placeValueLabels(items);
+                  return (
+                    <g key={`v-${p.key}`}>
+                      {items.map((it, j) => (
+                        <text
+                          key={it.s.key}
+                          x={cx(i)}
+                          y={ys[j]}
+                          textAnchor="middle"
+                          fontSize={8.5}
+                          fontWeight={600}
+                          fill={it.s.color}
+                          stroke="var(--background)"
+                          strokeWidth={2.5}
+                          paintOrder="stroke"
+                          className="tabular-nums"
+                        >
+                          {fmt(it.v)}
+                        </text>
+                      ))}
+                    </g>
+                  );
+                })}
             </g>
           ) : (
           <g clipPath={`url(#${clipId})`}>
