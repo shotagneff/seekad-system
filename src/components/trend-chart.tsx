@@ -5,6 +5,8 @@
 // 反響リードとアポ獲得管理の両方で同じ見た目を使うため、系列(series)を外から渡す。
 //   mode="stack" … 積み上げ棒（種別のように排他な内訳。＋対応済みの折れ線）
 //   mode="group" … 日ごとに横並び棒（アポ→案件化→成約のように包含関係で積み上げられないもの）
+//   mode="line"  … 系列ごとの折れ線。値が null の点は打たず線を途切れさせる（率の分母 0 など）
+//   valueFormat="percent" … 軸と吹き出しを % で出す（率の推移）
 //
 // グラフのライブラリは足していない。この1枚のために依存を増やすとバンドルが重くなる。SVG で足りる。
 
@@ -17,7 +19,8 @@ export type TrendDatum = {
   weekend: boolean;
   /** stack モードの合計（軸の目盛り決めと「計」表示に使う） */
   total: number;
-  byKind: Record<string, number>;
+  /** null は「値が出せない」（率の分母が 0 など）。line モードでは点を打たない */
+  byKind: Record<string, number | null>;
   /** 折れ線（対応済みなど）。showLine のときだけ描く */
   responded: number;
 };
@@ -41,12 +44,14 @@ export function TrendChart({
   mode = "stack",
   showLine = true,
   lineLabel = "対応済み",
+  valueFormat = "count",
 }: {
   points: TrendDatum[];
   series: TrendSeries[];
   mode?: "stack" | "group" | "line";
   showLine?: boolean;
   lineLabel?: string;
+  valueFormat?: "count" | "percent";
 }) {
   const clipId = useId();
   const [hover, setHover] = useState<number | null>(null);
@@ -55,18 +60,24 @@ export function TrendChart({
     return <p className="py-10 text-center text-sm text-neutral-400">まだデータがありません</p>;
   }
 
-  // 軸の最大は実データから。stack は合計、group は系列の最大値で決める。
+  const isPercent = valueFormat === "percent";
+  const fmt = (v: number) => (isPercent ? `${Number.isInteger(v) ? v : v.toFixed(1)}%` : String(v));
+
+  // 軸の最大は実データから。stack は合計、group/line は系列の最大値で決める。
+  // % は 100 を超えないので、目盛りの刻みも % 向けにする。
   const pointMax = (p: TrendDatum) =>
     mode === "stack" ? p.total : Math.max(0, ...series.map((s) => p.byKind[s.key] ?? 0));
-  const rawMax = Math.max(1, ...points.map(pointMax));
-  const step = [1, 2, 5, 10, 20, 50, 100].find((s) => rawMax / s <= 5) ?? 200;
+  const rawMax = Math.max(isPercent ? 10 : 1, ...points.map(pointMax));
+  const step = isPercent
+    ? ([5, 10, 20, 25, 50].find((s) => rawMax / s <= 5) ?? 50)
+    : ([1, 2, 5, 10, 20, 50, 100].find((s) => rawMax / s <= 5) ?? 200);
   const max = Math.ceil(rawMax / step) * step;
   const ticks: number[] = [];
   for (let v = 0; v <= max; v += step) ticks.push(v);
 
   const W = 640;
   const H = 220;
-  const padL = 28;
+  const padL = isPercent ? 34 : 28;
   const padR = 8;
   const padT = 10;
   const padB = 34;
@@ -127,7 +138,7 @@ export function TrendChart({
                 className="text-neutral-200 dark:text-neutral-700"
               />
               <text x={padL - 6} y={y(t) + 3} textAnchor="end" fontSize={9} fill="currentColor" className="tabular-nums text-neutral-400">
-                {t}
+                {fmt(t)}
               </text>
             </g>
           ))}
@@ -151,25 +162,41 @@ export function TrendChart({
           {mode === "line" ? (
             <g>
               {series.map((s) => {
+                // null の点は飛ばし、前の点が null なら線を繋がない（M で書き直す）
+                let prevMissing = true;
                 const d = points
-                  .map((p, i) => `${i === 0 ? "M" : "L"}${cx(i).toFixed(1)},${y(p.byKind[s.key] ?? 0).toFixed(1)}`)
+                  .map((p, i) => {
+                    const v = p.byKind[s.key];
+                    if (v === null || v === undefined) {
+                      prevMissing = true;
+                      return "";
+                    }
+                    const cmd = prevMissing ? "M" : "L";
+                    prevMissing = false;
+                    return `${cmd}${cx(i).toFixed(1)},${y(v).toFixed(1)}`;
+                  })
+                  .filter(Boolean)
                   .join(" ");
                 return (
                   <g key={s.key}>
                     <path d={d} fill="none" stroke={s.color} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />
-                    {points.map((p, i) =>
-                      (p.byKind[s.key] ?? 0) > 0 ? (
+                    {points.map((p, i) => {
+                      const v = p.byKind[s.key];
+                      if (v === null || v === undefined) return null;
+                      // 件数は 0 の点を打たない（0 の日が多く煩くなる）。% は 0% も意味があるので打つ
+                      if (!isPercent && v <= 0) return null;
+                      return (
                         <circle
                           key={p.key}
                           cx={cx(i)}
-                          cy={y(p.byKind[s.key])}
+                          cy={y(v)}
                           r={3.2}
                           fill={s.color}
                           stroke="var(--background)"
                           strokeWidth={1.5}
                         />
-                      ) : null
-                    )}
+                      );
+                    })}
                   </g>
                 );
               })}
@@ -226,9 +253,9 @@ export function TrendChart({
             </g>
           )}
 
-          {/* X軸ラベル（多いときは右端から1つおき） */}
+          {/* X軸ラベル（多いときは右端から1つおき。月次の12点は全部出す） */}
           {points.map((p, i) => {
-            const thin = points.length > 10 && (points.length - 1 - i) % 2 === 1;
+            const thin = points.length > 12 && (points.length - 1 - i) % 2 === 1;
             if (thin) return null;
             return (
               <text
@@ -260,8 +287,12 @@ export function TrendChart({
               <title>
                 {mode === "stack" ? `${p.label}　計${p.total}件` : p.label}
                 {series
-                  .filter((s) => (p.byKind[s.key] ?? 0) > 0)
-                  .map((s) => `\n${s.key} ${p.byKind[s.key]}`)
+                  .filter((s) => {
+                    const v = p.byKind[s.key];
+                    if (v === null || v === undefined) return false;
+                    return isPercent || v > 0;
+                  })
+                  .map((s) => `\n${s.key} ${fmt(p.byKind[s.key] as number)}`)
                   .join("")}
                 {showLine ? `\n${lineLabel} ${p.responded}` : ""}
               </title>

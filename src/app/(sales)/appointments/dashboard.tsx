@@ -5,11 +5,14 @@
 // 反響リードのダッシュボードと同じ見た目（KPI＋推移グラフ＋内訳）で、
 // 「毎日 何件アポが取れて / 何件案件化して / 何件成約したか」を見せる。
 //   アポ獲得 … リード登録   案件化 … 案件作成   成約 … 受注
+// 件数は 日別・週次・月次 で切り替え、率（案件化率・成約率）は月ごとに折れ線で見せる。
 import { useMemo, useState } from "react";
 import {
   OPEN_DEAL_PHASES,
   appointmentByOwner,
   appointmentDailyTrend,
+  appointmentMonthlyTrend,
+  appointmentRateTrend,
   appointmentWeeklyTrend,
   type SalesData,
   type SalesOwnerBreakdown,
@@ -24,12 +27,25 @@ const SERIES = [
   { key: "成約", color: "#94532f" },
 ];
 
+// 率は「何を何で割ったか」が凡例だけで分かるようにする
+const RATE_SERIES = [
+  { key: "案件化率", color: "#1d6f80" },
+  { key: "成約率", color: "#94532f" },
+  { key: "アポ→成約率", color: "#9e8d70" },
+];
+
+const PERIODS = ["日別", "週次", "月次"] as const;
+type Period = (typeof PERIODS)[number];
+
 export function AppointmentDashboard({ data }: { data: SalesData }) {
-  const [period, setPeriod] = useState<"日別" | "週次">("日別");
+  const [period, setPeriod] = useState<Period>("日別");
 
   const daily = useMemo(() => appointmentDailyTrend(data, 14), [data]);
   const weekly = useMemo(() => appointmentWeeklyTrend(data), [data]);
+  const monthly = useMemo(() => appointmentMonthlyTrend(data, 12), [data]);
+  const monthlyRates = useMemo(() => appointmentRateTrend(monthly), [monthly]);
   const byOwner = useMemo(() => appointmentByOwner(data), [data]);
+  const trendPoints = period === "日別" ? daily : period === "週次" ? weekly : monthly;
 
   const totalAppo = data.leads.length;
   const dealt = data.deals.length;
@@ -54,7 +70,7 @@ export function AppointmentDashboard({ data }: { data: SalesData }) {
           title="件数の推移（アポ獲得・案件化・成約）"
           action={
             <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5 dark:bg-neutral-800">
-              {(["日別", "週次"] as const).map((p) => (
+              {PERIODS.map((p) => (
                 <button
                   key={p}
                   onClick={() => setPeriod(p)}
@@ -70,7 +86,23 @@ export function AppointmentDashboard({ data }: { data: SalesData }) {
             </div>
           }
         >
-          <TrendChart points={period === "日別" ? daily : weekly} series={SERIES} mode="line" showLine={false} />
+          <TrendChart points={trendPoints} series={SERIES} mode="line" showLine={false} />
+        </Card>
+      </section>
+
+      <section>
+        <Card
+          title="率の推移（月次）"
+          action={
+            <span className="text-xs text-neutral-400">
+              案件化率＝案件化÷アポ獲得　成約率＝成約÷案件化　アポ→成約率＝成約÷アポ獲得
+            </span>
+          }
+        >
+          <TrendChart points={monthlyRates} series={RATE_SERIES} mode="line" showLine={false} valueFormat="percent" />
+          <p className="mt-2 text-[11px] text-neutral-400">
+            その月に起きた件数どうしで割っています。分母が 0 の月は線が途切れます
+          </p>
         </Card>
       </section>
 

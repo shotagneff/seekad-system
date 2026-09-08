@@ -208,7 +208,8 @@ export type SalesTrendPoint = {
   label: string;
   weekend: boolean;
   total: number;
-  byKind: Record<string, number>;
+  /** null は「出せない」（率の分母が 0 など）。グラフでは点を打たない */
+  byKind: Record<string, number | null>;
   responded: number;
 };
 
@@ -247,12 +248,12 @@ export function appointmentDailyTrend(data: SalesData, days = 14): SalesTrendPoi
   const bump = (dateStr: string | null, kind: string) => {
     if (!dateStr) return;
     const p = map.get(dateStr.slice(0, 10));
-    if (p) p.byKind[kind]++;
+    if (p) p.byKind[kind] = (p.byKind[kind] ?? 0) + 1;
   };
   for (const l of data.leads) bump(l.registeredOn, "アポ獲得");
   for (const d of data.deals) bump(d.createdOn, "案件化");
   for (const d of data.deals) bump(d.wonOn, "成約");
-  for (const p of map.values()) p.total = Math.max(p.byKind.アポ獲得, p.byKind.案件化, p.byKind.成約);
+  for (const p of map.values()) p.total = Math.max(p.byKind.アポ獲得 ?? 0, p.byKind.案件化 ?? 0, p.byKind.成約 ?? 0);
   return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
 }
 
@@ -274,13 +275,74 @@ export function appointmentWeeklyTrend(data: SalesData): SalesTrendPoint[] {
       };
       map.set(ws, p);
     }
-    p.byKind[kind]++;
+    p.byKind[kind] = (p.byKind[kind] ?? 0) + 1;
   };
   for (const l of data.leads) bump(l.registeredOn, "アポ獲得");
   for (const d of data.deals) bump(d.createdOn, "案件化");
   for (const d of data.deals) bump(d.wonOn, "成約");
-  for (const p of map.values()) p.total = Math.max(p.byKind.アポ獲得, p.byKind.案件化, p.byKind.成約);
+  for (const p of map.values()) p.total = Math.max(p.byKind.アポ獲得 ?? 0, p.byKind.案件化 ?? 0, p.byKind.成約 ?? 0);
   return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
+}
+
+/** 月ごとの推移。今月を右端に、直近 months ヶ月ぶんを 0 件の月も埋めて並べる */
+export function appointmentMonthlyTrend(data: SalesData, months = 12): SalesTrendPoint[] {
+  const map = new Map<string, SalesTrendPoint>();
+  let [y, m] = todayJst().slice(0, 7).split("-").map(Number);
+  for (let i = 0; i < months; i++) {
+    const key = `${y}-${String(m).padStart(2, "0")}`;
+    map.set(key, {
+      key,
+      label: `${y}/${m}`,
+      weekend: false,
+      total: 0,
+      byKind: emptyKinds(),
+      responded: 0,
+    });
+    m -= 1;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    }
+  }
+  const bump = (dateStr: string | null, kind: string) => {
+    if (!dateStr) return;
+    const p = map.get(dateStr.slice(0, 7));
+    if (p) p.byKind[kind] = (p.byKind[kind] ?? 0) + 1;
+  };
+  for (const l of data.leads) bump(l.registeredOn, "アポ獲得");
+  for (const d of data.deals) bump(d.createdOn, "案件化");
+  for (const d of data.deals) bump(d.wonOn, "成約");
+  for (const p of map.values()) p.total = Math.max(p.byKind.アポ獲得 ?? 0, p.byKind.案件化 ?? 0, p.byKind.成約 ?? 0);
+  return [...map.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
+}
+
+/** 率の系列。表示順もこの順 */
+export const APPOINTMENT_RATE_SERIES = ["案件化率", "成約率", "アポ→成約率"] as const;
+
+/**
+ * 件数の推移から率の推移を出す（%）。
+ *   案件化率   … 案件化 ÷ アポ獲得
+ *   成約率     … 成約 ÷ 案件化
+ *   アポ→成約率 … 成約 ÷ アポ獲得（KPI の「成約率」と同じ定義）
+ * どれも「その期間に起きた件数どうし」で割る。成績ページの CVR と同じ考え方。
+ * 分母が 0 の期間は率が出せないので null（グラフでは線が途切れる）。
+ */
+export function appointmentRateTrend(points: SalesTrendPoint[]): SalesTrendPoint[] {
+  const rate = (num: number, den: number) => (den === 0 ? null : Math.round((num / den) * 1000) / 10);
+  return points.map((p) => {
+    const appo = p.byKind.アポ獲得 ?? 0;
+    const dealt = p.byKind.案件化 ?? 0;
+    const won = p.byKind.成約 ?? 0;
+    return {
+      ...p,
+      total: 0,
+      byKind: {
+        案件化率: rate(dealt, appo),
+        成約率: rate(won, dealt),
+        "アポ→成約率": rate(won, appo),
+      },
+    };
+  });
 }
 
 export type SalesOwnerBreakdown = { name: string; アポ獲得: number; 案件化: number; 成約: number };
