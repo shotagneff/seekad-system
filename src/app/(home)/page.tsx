@@ -11,7 +11,7 @@ import {
   type WeeklyRow,
   type OverrideRow,
 } from "@/lib/attendance-util";
-import type { Lead } from "@/lib/sales-types";
+import { normalizeOwnerName, type Lead } from "@/lib/sales-types";
 import AttendanceCalendar, { monthStart } from "@/components/attendance-calendar";
 
 type Announcement = {
@@ -137,7 +137,8 @@ export default function Home() {
 
   const membersByName = useMemo(() => {
     const map = new Map<string, Member>();
-    for (const m of members) map.set(m.name.trim(), m);
+    // ユーザー管理の表示名は「宅間　宗大」、リードの担当は「宅間宗大」なので空白を落として当てる
+    for (const m of members) map.set(normalizeOwnerName(m.name), m);
     return map;
   }, [members]);
 
@@ -156,7 +157,7 @@ export default function Home() {
       const sorted = [...list].sort((a, b) => timeVal(a).localeCompare(timeVal(b)));
       return {
         owner,
-        member: membersByName.get(owner),
+        member: membersByName.get(normalizeOwnerName(owner)),
         list: sorted,
         earliest: timeVal(sorted[0]),
       };

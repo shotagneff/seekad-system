@@ -16,12 +16,18 @@ import { AppointmentDashboard } from "./dashboard";
 const TABS = ["リード管理", "案件管理", "顧客管理", "失注管理"] as const;
 type Tab = (typeof TABS)[number];
 
-type Payload = { leads: Lead[]; deals: Deal[]; customers: Customer[] };
+type Payload = {
+  leads: Lead[];
+  deals: Deal[];
+  customers: Customer[];
+  /** 担当者の候補（登録ユーザー＋データにある担当）。API が並べて返す */
+  owners: string[];
+};
 
 export default function AppointmentsPage() {
   const [view, setView] = useState<"ダッシュボード" | "アポ獲得リスト">("ダッシュボード");
   const [tab, setTab] = useState<Tab>("リード管理");
-  const [data, setData] = useState<Payload>({ leads: [], deals: [], customers: [] });
+  const [data, setData] = useState<Payload>({ leads: [], deals: [], customers: [], owners: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -42,7 +48,12 @@ export default function AppointmentsPage() {
         );
       }
       if (!res.ok) throw new Error(json?.error ?? `取得に失敗しました (${res.status})`);
-      setData({ leads: json.leads ?? [], deals: json.deals ?? [], customers: json.customers ?? [] });
+      setData({
+        leads: json.leads ?? [],
+        deals: json.deals ?? [],
+        customers: json.customers ?? [],
+        owners: json.owners ?? [],
+      });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -105,7 +116,8 @@ export default function AppointmentsPage() {
     }
   }, [load]);
 
-  const owners = useMemo(() => orderedOwners(data), [data]);
+  // 古い API（owners 無し）でもデータにある担当だけは出す
+  const owners = useMemo(() => orderedOwners(data, data.owners), [data]);
 
   const kpis = useMemo(() => {
     const open = data.deals.filter((d) => OPEN_DEAL_PHASES.includes(d.phase));

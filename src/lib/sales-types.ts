@@ -165,6 +165,15 @@ export function todayJst(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
 }
 
+/**
+ * 担当者名の表記ゆれを吸収する。
+ * ユーザー管理の表示名は「宅間　宗大」のように姓名の間に全角スペースが入るが、
+ * アポ獲得管理の担当は「宅間宗大」で入っている。空白を全部落として同じ人にする。
+ */
+export function normalizeOwnerName(name: string | null | undefined): string {
+  return (name ?? "").replace(/[\s\u3000]+/g, "");
+}
+
 /** YYYY-MM を取り出す */
 export function monthOf(date: string | null): string | null {
   return date ? date.slice(0, 7) : null;

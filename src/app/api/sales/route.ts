@@ -4,6 +4,7 @@ import {
   createLead,
   deleteLead,
   getSalesData,
+  listRegisteredOwners,
   updateCustomer,
   updateDeal,
   updateLead,
@@ -11,7 +12,7 @@ import {
   LEAD_PHASES,
   CUSTOMER_STATUSES,
 } from "@/lib/sales";
-import { buildPerformance } from "@/lib/sales-performance";
+import { buildPerformance, orderedOwners } from "@/lib/sales-performance";
 import {
   ensureSalesLeadsTable,
   ensureSalesDealsTable,
@@ -46,8 +47,9 @@ export async function GET() {
   if (blocked) return blocked;
   try {
     await ensureSales();
-    const data = await getSalesData();
-    return NextResponse.json({ ...data, performance: buildPerformance(data) });
+    const [data, registered] = await Promise.all([getSalesData(), listRegisteredOwners()]);
+    const owners = orderedOwners(data, registered);
+    return NextResponse.json({ ...data, owners, performance: buildPerformance(data, registered) });
   } catch (e) {
     console.error("[sales] 取得に失敗:", e);
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

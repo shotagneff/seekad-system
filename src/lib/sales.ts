@@ -24,6 +24,20 @@ export * from "@/lib/sales-types";
 // 読み出し
 // ---------------------------------------------------------------------------
 
+/**
+ * 担当者の候補にする登録ユーザーの表示名（有効なユーザーだけ）。
+ * ユーザー管理で追加した人がそのままアポ獲得管理の担当に出るようにする。
+ * 空白は sales-performance 側で落として案件データの表記に揃える。
+ */
+export async function listRegisteredOwners(): Promise<string[]> {
+  const res = await pool.query<{ display_name: string }>(
+    `SELECT display_name FROM igos_users
+     WHERE active = TRUE AND NULLIF(display_name, '') IS NOT NULL
+     ORDER BY login_id;`
+  );
+  return res.rows.map((r) => r.display_name);
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** DATE 型を YYYY-MM-DD に。時刻やタイムゾーンで日がずれないよう自前で組む */

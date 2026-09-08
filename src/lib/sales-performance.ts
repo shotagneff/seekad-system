@@ -11,6 +11,7 @@ import {
   OPEN_DEAL_PHASES,
   SalesData,
   monthOf,
+  normalizeOwnerName,
   todayJst,
 } from "@/lib/sales-types";
 
@@ -37,7 +38,11 @@ export const METRICS = [
 export type MetricKey = (typeof METRICS)[number]["key"];
 export type Metrics = Record<MetricKey, number>;
 
-/** 担当者列の並び。この順で常に候補・列に出す（担当案件がまだ無い新任も選べるように） */
+/**
+ * 担当者列の並び順の希望。ここにある人を先頭にこの順で出し、残りは名前順。
+ * 候補そのものは登録ユーザー（ユーザー管理）と案件データから作るので、
+ * 新しく登録した人はここに足さなくても自動で選べる。
+ */
 const OWNER_ORDER = ["平賀翔大", "佐藤翔永", "宅間宗大", "桐髙颯己"];
 
 export const TOTAL_COLUMN = "全体";
@@ -127,12 +132,21 @@ export type Performance = {
   cumulative: PerformanceCell[];
 };
 
-/** 担当者の並び。元シートの3人を先に、それ以外は後ろに足す */
-export function orderedOwners(data: SalesData): string[] {
+/**
+ * 担当者の候補。
+ *   registered … ユーザー管理に登録されている有効なユーザーの表示名（API が付けてくる）
+ *   data       … リード・案件に既に入っている担当（退職した人の過去案件も列に残す）
+ * 並びは OWNER_ORDER の順を先に、それ以外は名前順。
+ */
+export function orderedOwners(data: SalesData, registered: readonly string[] = []): string[] {
   const found = new Set<string>();
+  for (const name of registered) {
+    const n = normalizeOwnerName(name);
+    if (n) found.add(n);
+  }
   for (const l of data.leads) if (l.owner) found.add(l.owner);
   for (const d of data.deals) if (d.owner) found.add(d.owner);
-  const head = [...OWNER_ORDER];
+  const head = OWNER_ORDER.filter((o) => found.has(o));
   const rest = [...found].filter((o) => !OWNER_ORDER.includes(o)).sort();
   return [...head, ...rest];
 }
@@ -164,8 +178,8 @@ function monthRange(data: SalesData): string[] {
   return out;
 }
 
-export function buildPerformance(data: SalesData): Performance {
-  const owners = orderedOwners(data);
+export function buildPerformance(data: SalesData, registered: readonly string[] = []): Performance {
+  const owners = orderedOwners(data, registered);
   const columns = [...owners, TOTAL_COLUMN];
 
   const cellsFor = (month: string | null): PerformanceCell[] =>
