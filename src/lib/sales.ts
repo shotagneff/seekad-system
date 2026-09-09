@@ -4,11 +4,14 @@
 // ここはサーバー側でしか読まれない。
 
 import { pool } from "@/lib/db";
+import { ensureSalesLeadsTable } from "@/lib/schema";
+import { phoneKey, type Lead as CallforceLead } from "@/lib/callforce";
 import {
   PHASE_MAKES_CUSTOMER,
   PHASE_MAKES_DEAL,
   WIN_PROBABILITY,
   monthsBetween,
+  normalizeOwnerName,
   todayJst,
   type Customer,
   type Deal,
@@ -77,6 +80,14 @@ function toLead(r: any, dealIds: Set<number>): Lead {
     note: r.note ?? null,
     updatedOn: toDateString(r.updated_on),
     hasDeal: dealIds.has(Number(r.id)),
+    sourceLeadId: r.source_lead_id ?? null,
+    inquiredAt: r.inquired_at instanceof Date ? r.inquired_at.toISOString() : (r.inquired_at ?? null),
+    demoType: r.demo_type ?? null,
+    inflow: r.inflow ?? null,
+    acquisitionChannel: r.acquisition_channel ?? null,
+    inquiryCategory: r.inquiry_category ?? null,
+    message: r.message ?? null,
+    recordingUrl: r.recording_url ?? null,
   };
 }
 
@@ -188,6 +199,13 @@ const LEAD_FIELDS: Record<string, string> = {
   leadSource: "lead_source",
   referrer: "referrer",
   note: "note",
+  // 反響リード由来の欄。自動で入るが、画面から直せるようにしておく
+  demoType: "demo_type",
+  inflow: "inflow",
+  acquisitionChannel: "acquisition_channel",
+  inquiryCategory: "inquiry_category",
+  message: "message",
+  recordingUrl: "recording_url",
 };
 
 const DEAL_FIELDS: Record<string, string> = {
@@ -262,6 +280,133 @@ export async function createLead(patch: Record<string, unknown>): Promise<number
   );
   await updateLead(id, { ...patch, registeredOn });
   return id;
+}
+
+// ---------------------------------------------------------------------------
+// 反響リード（Callforce）→ アポ獲得管理
+//
+// 反響リードで対応状況を「アポ獲得」にしたら、その内容をこちらのリードとして起こす。
+// これまでは人が反響リードを見ながらアポ獲得管理に手で打ち直していた工程。
+// 「案件化済→案件」「受注→顧客」と同じく、進めた瞬間にサーバー側で作る。
+// ---------------------------------------------------------------------------
+
+/**
+ * 流入経路（反響リード側の選択肢）を、こちらの「リードソース種別」に寄せる。
+ * 元の値は acquisition_channel 列にそのまま残すので、ここは集計用の丸めでよい。
+ */
+function leadSourceOf(lead: CallforceLead): string | null {
+  switch (lead.acquisitionChannel) {
+    case "Meta広告":
+    case "Instagram":
+      return "SNS・広告";
+    case "ホームページ":
+      return "Web問合せ";
+    case "紹介":
+    case "既存顧客":
+      return "紹介";
+    case "イベント・交流会":
+      return "イベント";
+    case "代理店":
+    case "その他":
+      return "その他";
+  }
+  // 流入経路が無い古い行は、システムが記録した source から推定する
+  if (lead.source === "ad_form") return "SNS・広告";
+  if (lead.source === "web_estimate") return "Web問合せ";
+  return null;
+}
+
+/**
+ * 反響リードの担当者名を、こちらの担当者（ユーザー管理の表示名）に寄せる。
+ * Callforce 側は「宅間宗大」、ユーザー管理は「宅間　宗大」のように空白の有無が違うため、
+ * 空白を落として同じ人なら登録名のほうを使う。誰にも当たらなければそのまま入れる。
+ */
+function ownerOf(assignedTo: string, registered: string[]): string | null {
+  const name = (assignedTo ?? "").trim();
+  if (!name || name === "未割当") return null;
+  const n = normalizeOwnerName(name);
+  return registered.find((r) => normalizeOwnerName(r) === n) ?? name;
+}
+
+export type CallforceImportResult = {
+  /** アポ獲得管理側の案件ID */
+  id: number;
+  /** 今回新しく作ったか。false なら既にあった行を返している */
+  created: boolean;
+};
+
+/**
+ * 反響リードからアポ獲得管理のリードを作る。既にあれば作らずその ID を返す。
+ *
+ * 「既にある」の判定は2段:
+ *   1. 同じ反響リード id（同じ行を何度もアポ獲得⇄他の状況に動かしても増えない）
+ *   2. 同じ電話番号から作った行（同じ相手が2回問い合わせて両方アポ獲得にしても
+ *      1件のアポが2件に水増しされない。反響リードのダッシュボードと同じ数え方）
+ * 手で作った行（source_lead_id が空）とは突き合わせない。
+ * 反響とは別口で先に登録していた相手がいても、そちらを壊さないため。
+ *
+ * @param contactNote 電話番号に紐づくメモ（反響リードの「メモ」欄）。行の note とは別物
+ */
+export async function createLeadFromCallforce(
+  lead: CallforceLead,
+  contactNote: string | null
+): Promise<CallforceImportResult> {
+  await ensureSalesLeadsTable();
+
+  const bySource = await pool.query("SELECT id FROM sales_leads WHERE source_lead_id = $1", [lead.id]);
+  if (bySource.rowCount) return { id: Number(bySource.rows[0].id), created: false };
+
+  const key = phoneKey(lead.phoneNumber);
+  if (key) {
+    const byPhone = await pool.query(
+      `SELECT id FROM sales_leads
+       WHERE source_lead_id IS NOT NULL
+         AND RIGHT(regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g'), 9) = $1
+       ORDER BY id DESC LIMIT 1`,
+      [key]
+    );
+    if (byPhone.rowCount) return { id: Number(byPhone.rows[0].id), created: false };
+  }
+
+  const registered = await listRegisteredOwners();
+  const today = todayJst();
+  const id = await nextLeadId();
+
+  // メモは「番号に紐づくメモ」と「行のメモ」の両方を運ぶ。
+  // 古い行は担当者名やメールが note に入っているので、捨てると情報が落ちる
+  const notes = [contactNote, lead.note]
+    .map((v) => (v ?? "").trim())
+    .filter((v, i, arr) => v && arr.indexOf(v) === i);
+
+  await pool.query(
+    `INSERT INTO sales_leads
+       (id, month_label, company, owner, phase, registered_on, contact_name, phone, email,
+        lead_source, note, updated_on,
+        source_lead_id, inquired_at, demo_type, inflow, acquisition_channel,
+        inquiry_category, message, recording_url)
+     VALUES ($1,$2,$3,$4,'リード',$5,$6,$7,$8,$9,$10,$5,$11,$12,$13,$14,$15,$16,$17,$18)`,
+    [
+      id,
+      `${Number(today.slice(5, 7))}月`,
+      lead.companyName?.trim() || null,
+      ownerOf(lead.assignedTo, registered),
+      today,
+      lead.contactName?.trim() || null,
+      lead.phoneNumber || null,
+      lead.email?.trim() || null,
+      leadSourceOf(lead),
+      notes.length ? notes.join("\n") : null,
+      lead.id,
+      lead.createdAt || null,
+      lead.demoType,
+      lead.inflow,
+      lead.acquisitionChannel,
+      lead.inquiryCategory,
+      lead.message,
+      lead.recordingUrl,
+    ]
+  );
+  return { id, created: true };
 }
 
 /**

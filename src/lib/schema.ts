@@ -230,6 +230,28 @@ export async function ensureSalesLeadsTable(): Promise<void> {
   await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS next_action_time TEXT;');
   // 商談メモ。案件化したときに案件側へそのまま引き継ぐ
   await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS note TEXT;');
+
+  // 反響リード（Callforce）で「アポ獲得」にしたときに自動で作られる行が持つ情報。
+  // 手で打ち直していた内容をそのまま運ぶための列。手入力の行では空のまま。
+  //   source_lead_id … 元の反響リードの id（Callforce 側の UUID）。二重作成の防止に使う
+  //   inquired_at    … 反響が入った日時
+  //   demo_type      … 資料請求 / お問い合わせ / 架電デモ など
+  //   inflow         … 流入元（Meta広告 / homepage など、システムが記録したもの）
+  //   acquisition_channel … 流入経路（アポ獲得時に人が選んだもの）
+  //   inquiry_category    … フォームのチェック項目（相手の課題）
+  //   message        … フォームのメッセージ本文
+  //   recording_url  … デモ通話の録音
+  await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS source_lead_id TEXT;');
+  await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS inquired_at TIMESTAMPTZ;');
+  await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS demo_type TEXT;');
+  await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS inflow TEXT;');
+  await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS acquisition_channel TEXT;');
+  await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS inquiry_category TEXT;');
+  await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS message TEXT;');
+  await pool.query('ALTER TABLE sales_leads ADD COLUMN IF NOT EXISTS recording_url TEXT;');
+  await pool.query(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_leads_source_lead ON sales_leads (source_lead_id) WHERE source_lead_id IS NOT NULL;'
+  );
 }
 
 export async function ensureSalesDealsTable(): Promise<void> {

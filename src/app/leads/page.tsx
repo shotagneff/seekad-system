@@ -23,6 +23,8 @@ export default function LeadsPage() {
   const [responders, setResponders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** アポ獲得管理に追加できたときの案内。数秒で消す */
+  const [notice, setNotice] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -82,10 +84,26 @@ export default function LeadsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, ...patchBody }),
         });
+        const j = (await res.json().catch(() => null)) as {
+          error?: string;
+          salesLead?: { id: number; created: boolean };
+          salesLeadError?: string;
+        } | null;
         if (!res.ok) {
           // 「アポ獲得には流入経路が必要」など、理由が返るものはそのまま出す
-          const j = await res.json().catch(() => null);
           throw new Error(j?.error ?? "保存に失敗しました");
+        }
+        // アポ獲得にしたときは、アポ獲得管理にリードが作られる。
+        // 作られたのか・既にあったのか・失敗したのかを、その場で分かるようにする
+        if (j?.salesLeadError) {
+          setError(j.salesLeadError);
+        } else if (j?.salesLead) {
+          setError(null);
+          setNotice(
+            j.salesLead.created
+              ? `アポ獲得管理にリードを追加しました（案件ID ${j.salesLead.id}）`
+              : `アポ獲得管理には登録済みです（案件ID ${j.salesLead.id}）`
+          );
         }
       } catch (e) {
         setLeads(before); // 戻す。保存できていないのに変わって見えるのが一番困る
@@ -119,6 +137,12 @@ export default function LeadsPage() {
       setError((e as Error).message);
     }
   }, [leads]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 8_000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   const 未対応 = leads.filter((l) => l.status === "未対応").length;
 
@@ -171,6 +195,14 @@ export default function LeadsPage() {
       {error && (
         <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+          <span>✓ {notice}</span>
+          <a href="/appointments" className="font-medium underline underline-offset-2">
+            アポ獲得管理を開く
+          </a>
         </p>
       )}
 

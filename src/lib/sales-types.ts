@@ -98,6 +98,24 @@ export type Lead = {
   updatedOn: string | null;
   /** 案件化済みか。案件テーブルに同じ案件IDがあるか */
   hasDeal: boolean;
+
+  // ---- 反響リード（Callforce）から自動で作られた行だけが持つ情報 ----
+  /** 元の反響リードの id。手入力の行は null */
+  sourceLeadId: string | null;
+  /** 反響が入った日時（ISO） */
+  inquiredAt: string | null;
+  /** 資料請求 / お問い合わせ / 架電デモ など */
+  demoType: string | null;
+  /** 流入元（Meta広告 / homepage など、システムが記録したもの） */
+  inflow: string | null;
+  /** 流入経路（アポ獲得時に人が選んだもの） */
+  acquisitionChannel: string | null;
+  /** フォームのチェック項目（相手の課題） */
+  inquiryCategory: string | null;
+  /** フォームのメッセージ本文 */
+  message: string | null;
+  /** デモ通話の録音URL */
+  recordingUrl: string | null;
 };
 
 export type Deal = {

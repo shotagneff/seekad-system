@@ -6,11 +6,14 @@ import {
   updateLead,
   saveContactNote,
   getLead,
+  getContactNote,
   ACQUISITION_CHANNELS,
   CHANNEL_REQUIRED_STATUS,
   LEAD_STATUSES,
   type LeadStatus,
 } from "@/lib/callforce";
+import { hasDatabase } from "@/lib/db";
+import { createLeadFromCallforce, type CallforceImportResult } from "@/lib/sales";
 
 // 反響リード（Callforce のデモ通話・広告フォーム）の一覧と更新。
 // データは Callforce 側の Supabase にあり、ここでは持たない。
@@ -109,6 +112,30 @@ export async function PATCH(req: NextRequest) {
         nextActionAt: body.nextActionAt,
         acquisitionChannel: body.acquisitionChannel,
       });
+
+      // アポ獲得にしたら、その内容でアポ獲得管理のリードを起こす。
+      // これまでは反響リードを見ながら手で打ち直していた。
+      // 反響リード側の更新は済んでいるので、こちらが失敗しても 200 で返し、
+      // 理由だけ salesLeadError に載せる（画面で赤く出す）。
+      if (body.status === CHANNEL_REQUIRED_STATUS) {
+        if (!hasDatabase()) {
+          return NextResponse.json({ ok: true, salesLeadError: "DATABASE_URL が未設定のためアポ獲得管理に追加できません" });
+        }
+        let salesLead: CallforceImportResult | null = null;
+        try {
+          const lead = await getLead(body.id);
+          if (!lead) throw new Error("反響リードが見つかりません");
+          const contactNote = await getContactNote(lead.phoneNumber);
+          salesLead = await createLeadFromCallforce(lead, contactNote);
+        } catch (e) {
+          console.error("[leads] アポ獲得管理への追加に失敗:", e);
+          return NextResponse.json({
+            ok: true,
+            salesLeadError: `アポ獲得管理への追加に失敗しました: ${(e as Error).message}`,
+          });
+        }
+        return NextResponse.json({ ok: true, salesLead });
+      }
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

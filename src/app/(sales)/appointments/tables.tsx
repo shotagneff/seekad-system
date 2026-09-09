@@ -293,6 +293,25 @@ function useRegisteredEmails(): Set<string> {
   return emails;
 }
 
+/** 反響リードから運ばれてくる欄の見出し。表では薄い青で「自動で入る欄」だと分かるようにする */
+const INQUIRY_HEADERS = ["反響日時", "反響種別", "流入経路", "流入元", "課題", "メッセージ", "録音URL"];
+const INQUIRY_TD = "bg-sky-50/40 dark:bg-sky-900/10";
+
+/** 反響日時を「2026/09/09 14:05」の形に（JST） */
+function formatInquiredAt(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
 export function LeadTable({
   leads,
   owners,
@@ -376,6 +395,7 @@ export function LeadTable({
       <p className="text-xs text-neutral-400">
         {shown.length}件　フェーズを「案件化済」にすると案件が自動で作られます
         <span className="ml-1 text-[#9e8d70]">／「次回アポ日」を今日にするとホームの「今日のアポイント」に表示されます</span>
+        <span className="ml-1 text-sky-700 dark:text-sky-400">／反響リードで「アポ獲得」にした行はここに自動で追加されます（「反響」バッジ付き）</span>
       </p>
 
       <TableFrame>
@@ -384,14 +404,20 @@ export function LeadTable({
             <tr>
               {["案件ID", "月", "会社名/氏名", "録音", "メルマガ", "担当者", "次回アポ日", "アポ時刻", "フェーズ", "確度", "登録日", "代表者名",
                 "先方担当者名", "役職", "電話番号", "メールアドレス", "WEBページ", "業種", "従業員規模",
-                "都道府県", "次回アクション", "メモ", "リードソース種別", "紹介元", "最終更新日"].map((h) => (
+                "都道府県", "次回アクション", "メモ", "リードソース種別", "紹介元",
+                // 反響リードで「アポ獲得」にしたときに自動で運ばれてくる欄
+                "反響日時", "反響種別", "流入経路", "流入元", "課題", "メッセージ", "録音URL",
+                "最終更新日"].map((h) => (
                 <th
                   key={h}
                   className={
                     h === "次回アポ日" || h === "アポ時刻"
                       ? `${TH} bg-[#f6f1e7] dark:bg-amber-900/20`
-                      : TH
+                      : INQUIRY_HEADERS.includes(h)
+                        ? `${TH} bg-sky-50/70 dark:bg-sky-900/20`
+                        : TH
                   }
+                  title={INQUIRY_HEADERS.includes(h) ? "反響リードで「アポ獲得」にすると自動で入ります" : undefined}
                 >
                   {h}
                 </th>
@@ -404,7 +430,17 @@ export function LeadTable({
                 key={l.id}
                 className={`${LEAD_PHASE_FILL[l.phase]} ${ROW_HOVER}`}
               >
-                <td className={`${TD} tabular-nums text-neutral-400`}>{l.id}</td>
+                <td className={`${TD} tabular-nums text-neutral-400`}>
+                  {l.id}
+                  {l.sourceLeadId && (
+                    <span
+                      className="ml-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+                      title="反響リードで「アポ獲得」にしたときに自動で作られた行"
+                    >
+                      反響
+                    </span>
+                  )}
+                </td>
                 <td className={`${TD} text-neutral-400`}>{l.monthLabel ?? ""}</td>
                 <td className={`${TD} min-w-[14rem] font-medium`}>
                   <Text value={l.company} onCommit={(v) => patch("lead", l.id, { company: v })} />
@@ -501,6 +537,39 @@ export function LeadTable({
                 </td>
                 <td className={TD}>
                   <Text value={l.referrer} onCommit={(v) => patch("lead", l.id, { referrer: v })} />
+                </td>
+                {/* 反響リード由来の欄。自動で入るが、手で直すこともできる */}
+                <td className={`${TD} ${INQUIRY_TD} whitespace-nowrap text-neutral-500 tabular-nums`}>
+                  {formatInquiredAt(l.inquiredAt)}
+                </td>
+                <td className={`${TD} ${INQUIRY_TD} min-w-[7rem]`}>
+                  <Text value={l.demoType} onCommit={(v) => patch("lead", l.id, { demoType: v })} />
+                </td>
+                <td className={`${TD} ${INQUIRY_TD} min-w-[7rem]`}>
+                  <Text value={l.acquisitionChannel} onCommit={(v) => patch("lead", l.id, { acquisitionChannel: v })} />
+                </td>
+                <td className={`${TD} ${INQUIRY_TD} min-w-[7rem]`}>
+                  <Text value={l.inflow} onCommit={(v) => patch("lead", l.id, { inflow: v })} />
+                </td>
+                <td className={`${TD} ${INQUIRY_TD} min-w-[12rem]`}>
+                  <Text value={l.inquiryCategory} onCommit={(v) => patch("lead", l.id, { inquiryCategory: v })} />
+                </td>
+                <td className={`${TD} ${INQUIRY_TD} min-w-[20rem]`}>
+                  <Note value={l.message} onCommit={(v) => patch("lead", l.id, { message: v })} />
+                </td>
+                <td className={`${TD} ${INQUIRY_TD} max-w-[12rem] overflow-hidden text-ellipsis`}>
+                  {l.recordingUrl ? (
+                    <a
+                      href={l.recordingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="whitespace-nowrap text-sky-600 hover:underline dark:text-sky-400"
+                    >
+                      🎧 録音を聞く
+                    </a>
+                  ) : (
+                    <Text value="" onCommit={(v) => patch("lead", l.id, { recordingUrl: v })} />
+                  )}
                 </td>
                 <td className={`${TD} text-neutral-400 tabular-nums`}>{l.updatedOn ?? ""}</td>
               </tr>

@@ -236,6 +236,16 @@ export async function getLead(id: string): Promise<Lead | null> {
   return rows[0] ? toLead(rows[0]) : null;
 }
 
+/** 1つの電話番号に紐づくメモ。アポ獲得管理へ運ぶときに使う */
+export async function getContactNote(phoneNumber: string): Promise<string | null> {
+  const key = phoneKey(phoneNumber);
+  if (!key) return null;
+  const res = await callforceFetch(`lead_contacts?select=note&phone_key=eq.${encodeURIComponent(key)}`);
+  if (!res.ok) return null;
+  const rows = (await res.json()) as Row[];
+  return rows[0]?.note ? String(rows[0].note) : null;
+}
+
 /** 電話番号ごとのメモをまとめて引く */
 async function fetchContactNotes(): Promise<Map<string, string>> {
   const res = await callforceFetch(`lead_contacts?select=phone_key,note`);
