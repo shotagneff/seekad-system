@@ -4,10 +4,10 @@
 import pg from "pg";
 
 const VIDEO = {
-  id: "callforce-aikaden-empaty",
-  title: "EMPATY株式会社｜ヒアリング（建設業へのコンサルティング業務のAI架電導入検討）",
+  id: "callforce-aikaden-afn",
+  title: "有限会社エーエフエヌ｜ヒアリング（PR掲載の打診のAI架電導入検討）",
   category: "AI架電",
-  url: "https://youtu.be/6rKOp_2KKsk",
+  url: "https://youtu.be/5v0SzYOsY8w",
   course: "callforce",
   sectionId: 2,
   episodeLabel: "ヒアリング",
