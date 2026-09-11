@@ -13,7 +13,12 @@ import {
   type LeadStatus,
 } from "@/lib/callforce";
 import { hasDatabase } from "@/lib/db";
-import { createLeadFromCallforce, type CallforceImportResult } from "@/lib/sales";
+import {
+  createLeadFromCallforce,
+  listRegisteredOwners,
+  normalizeOwnerName,
+  type CallforceImportResult,
+} from "@/lib/sales";
 
 // 反響リード（Callforce のデモ通話・広告フォーム）の一覧と更新。
 // データは Callforce 側の Supabase にあり、ここでは持たない。
@@ -24,6 +29,34 @@ import { createLeadFromCallforce, type CallforceImportResult } from "@/lib/sales
 
 export const dynamic = "force-dynamic";
 
+/**
+ * 担当の選択肢。Callforce の名簿にユーザー管理の社員を足す。
+ *
+ * Callforce の名簿（lead_responders）は反響の自動振り分けと通知の宛先なので、
+ * 担当を選べるようにするためだけに人を足すと、その人にも反響が振られてしまう。
+ * 名簿はそのままにして、ここで社員を足す。
+ * 同じ人（空白の有無だけ違う）は Callforce 側の表記を残す。既存の担当の値と揃えるため。
+ */
+async function listAssigneeOptions(): Promise<string[]> {
+  const [responders, owners] = await Promise.all([
+    listResponders(),
+    hasDatabase()
+      ? listRegisteredOwners().catch((e) => {
+          console.error("[leads] 社員の名簿の取得に失敗:", e);
+          return [] as string[];
+        })
+      : Promise.resolve([] as string[]),
+  ]);
+  const seen = new Set(responders.map(normalizeOwnerName));
+  const extra = owners.filter((name) => {
+    const key = normalizeOwnerName(name);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return [...responders, ...extra];
+}
+
 export async function GET() {
   if (!hasCallforce()) {
     return NextResponse.json(
@@ -32,7 +65,7 @@ export async function GET() {
     );
   }
   try {
-    const [leads, responders] = await Promise.all([listLeads(), listResponders()]);
+    const [leads, responders] = await Promise.all([listLeads(), listAssigneeOptions()]);
     return NextResponse.json({ leads, responders });
   } catch (e) {
     console.error("[leads] 取得に失敗:", e);
