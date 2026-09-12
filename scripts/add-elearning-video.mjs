@@ -4,10 +4,10 @@
 import pg from "pg";
 
 const VIDEO = {
-  id: "callforce-aikaden-fromnorth",
-  title: "株式会社FromNorth｜ヒアリング（新規開拓のためのAIテレアポ導入）",
+  id: "callforce-aikaden-xaiondata",
+  title: "株式会社XAIONDATA｜ヒアリング（採用データサービスの新規開拓に向けたAIテレアポ導入）",
   category: "AI架電",
-  url: "https://youtu.be/kvN7KTNiiwU",
+  url: "https://youtu.be/OYFgseYpStc",
   course: "callforce",
   sectionId: 2,
   episodeLabel: "ヒアリング",
