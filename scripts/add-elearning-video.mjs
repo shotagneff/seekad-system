@@ -4,13 +4,13 @@
 import pg from "pg";
 
 const VIDEO = {
-  id: "callforce-aikaden-xaiondata",
-  title: "株式会社XAIONDATA｜ヒアリング（採用データサービスの新規開拓に向けたAIテレアポ導入）",
+  id: "callforce-aikaden-empaty-closing",
+  title: "EMPATY株式会社｜クロージング（採用データサービス提供に向けた新規開拓のためのAIテレアポ導入）",
   category: "AI架電",
-  url: "https://youtu.be/OYFgseYpStc",
+  url: "https://youtu.be/RIMbfsXU7lI",
   course: "callforce",
   sectionId: 2,
-  episodeLabel: "ヒアリング",
+  episodeLabel: "クロージング",
 };
 
 const pool = new pg.Pool({
