@@ -347,6 +347,8 @@
 ├── CLAUDE.md                          本ファイル。プロジェクト全体のルール・進捗・変更ログ。
 ├── package.json                       依存管理。Next.js 16 / React 19 / pg / Tailwind v4。
 ├── scripts/
+│   ├── add-elearning-video.mjs        動画研修に1本追加する（VIDEO を書き換えて node --env-file=.env.local で実行。同じ id / URL があれば何もしない）。
+│   ├── rename-elearning-video.mjs     動画研修の1本の id とタイトルを直す（視聴の記録も付け替える）。
 │   └── backfill-name-kana.mjs         代表取締役名のカタカナ読みを一括で付ける（node --env-file=.env.local scripts/backfill-name-kana.mjs）。
 ├── middleware.ts                      認証ミドルウェア。全ページで Cookie 検証、admin 権限チェック。
 ├── next.config.ts                     Next.js 設定（現状デフォルト）。

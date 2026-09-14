@@ -4,8 +4,8 @@
 import pg from "pg";
 
 const VIDEO = {
-  id: "callforce-aikaden-empaty-closing",
-  title: "EMPATY株式会社｜クロージング（採用データサービス提供に向けた新規開拓のためのAIテレアポ導入）",
+  id: "callforce-aikaden-xaiondata-closing",
+  title: "株式会社XAIONDATA｜クロージング（採用データサービスの新規開拓に向けたAIテレアポ導入）",
   category: "AI架電",
   url: "https://youtu.be/RIMbfsXU7lI",
   course: "callforce",
