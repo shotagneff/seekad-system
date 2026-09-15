@@ -27,6 +27,7 @@ const LEAD_PHASE_TONE: Record<LeadPhase, string> = {
   リード: TONE.gray,
   初回面談: TONE.sky,
   案件化済: TONE.yellow,
+  受注: TONE.yellow,
   協業: TONE.violet,
   失注: TONE.gray,
 };
@@ -35,6 +36,7 @@ const LEAD_PHASE_FILL: Record<LeadPhase, string> = {
   リード: FILL.none,
   初回面談: FILL.none,
   案件化済: FILL.yellow,
+  受注: FILL.yellow,
   協業: FILL.violet,
   失注: FILL.gray,
 };
@@ -219,7 +221,7 @@ function Note({ value, onCommit }: { value: string | null; onCommit: (v: string)
 // リード管理
 // ---------------------------------------------------------------------------
 
-const LEAD_FILTERS = ["すべて", "追いかけ中", "案件化済", "失注"] as const;
+const LEAD_FILTERS = ["すべて", "追いかけ中", "案件化済", "受注", "失注"] as const;
 type LeadFilter = (typeof LEAD_FILTERS)[number];
 
 // アポ獲得のリードを、メルマガ（ナーチャリング/MA）へ登録するボタン。
@@ -331,8 +333,9 @@ export function LeadTable({
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return leads.filter((l) => {
-      if (filter === "追いかけ中" && (l.phase === "失注" || l.phase === "案件化済")) return false;
+      if (filter === "追いかけ中" && (l.phase === "失注" || l.phase === "案件化済" || l.phase === "受注")) return false;
       if (filter === "案件化済" && l.phase !== "案件化済") return false;
+      if (filter === "受注" && l.phase !== "受注") return false;
       if (filter === "失注" && l.phase !== "失注") return false;
       if (!q) return true;
       return [l.company, l.ceoName, l.contactName, l.industry, l.owner, l.phone]
@@ -393,7 +396,7 @@ export function LeadTable({
       </div>
 
       <p className="text-xs text-neutral-400">
-        {shown.length}件　フェーズを「案件化済」にすると案件が自動で作られます
+        {shown.length}件　フェーズを「案件化済」にすると案件が、「受注」にすると受注の案件と顧客が自動で作られます
         <span className="ml-1 text-[#9e8d70]">／「次回アポ日」を今日にするとホームの「今日のアポイント」に表示されます</span>
         <span className="ml-1 text-sky-700 dark:text-sky-400">／反響リードで「アポ獲得」にした行はここに自動で追加されます（「反響」バッジ付き）</span>
       </p>

@@ -9,6 +9,7 @@ import { phoneKey, type Lead as CallforceLead } from "@/lib/callforce";
 import {
   PHASE_MAKES_CUSTOMER,
   PHASE_MAKES_DEAL,
+  LEAD_PHASE_WON,
   WIN_PROBABILITY,
   monthsBetween,
   normalizeOwnerName,
@@ -415,6 +416,9 @@ export async function createLeadFromCallforce(
  * フェーズを「案件化済」にしたら案件を作る。
  * シートでは人が案件管理シートに手でコピペしていた工程。
  * 忘れると案件が消えるので、ここで自動にする。
+ *
+ * フェーズを「受注」にしたら、案件が無ければ作ったうえで案件を受注にする。
+ * 受注日・受注確度・顧客の作成は案件管理で受注にしたときと同じ処理（updateDeal）に任せる。
  */
 export async function updateLead(id: number, patch: Record<string, unknown>): Promise<void> {
   const { sets, values } = buildSet(patch, LEAD_FIELDS);
@@ -427,6 +431,13 @@ export async function updateLead(id: number, patch: Record<string, unknown>): Pr
 
   if (patch.phase === PHASE_MAKES_DEAL) {
     await ensureDealForLead(id);
+  }
+  if (patch.phase === LEAD_PHASE_WON) {
+    await ensureDealForLead(id);
+    const deal = await pool.query("SELECT phase FROM sales_deals WHERE id = $1", [id]);
+    if (deal.rowCount && deal.rows[0].phase !== PHASE_MAKES_CUSTOMER) {
+      await updateDeal(id, { phase: PHASE_MAKES_CUSTOMER });
+    }
   }
 }
 
@@ -486,6 +497,13 @@ export async function updateDeal(id: number, patch: Record<string, unknown>): Pr
 
   if (patch.phase === PHASE_MAKES_CUSTOMER) {
     await ensureCustomerForDeal(id);
+    // 案件管理で受注にしたら、元のリードも「受注」に揃える。
+    // 案件化済のまま残ると、リード一覧で受注した相手が見分けられないため。
+    // 失注・協業など人が別の意味で付けたフェーズは上書きしない
+    await pool.query(
+      `UPDATE sales_leads SET phase = $1, updated_on = $2 WHERE id = $3 AND phase = $4`,
+      [LEAD_PHASE_WON, today, id, PHASE_MAKES_DEAL]
+    );
   }
 }
 

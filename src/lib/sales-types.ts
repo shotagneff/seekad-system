@@ -20,8 +20,11 @@
 // 区分
 // ---------------------------------------------------------------------------
 
-/** リードのフェーズ。案件化済になると案件へ進む */
-export const LEAD_PHASES = ["リード", "初回面談", "案件化済", "協業", "失注"] as const;
+/**
+ * リードのフェーズ。案件化済になると案件へ進む。
+ * 受注にすると、案件管理で受注にしたのと同じく案件（受注）と顧客が作られる
+ */
+export const LEAD_PHASES = ["リード", "初回面談", "案件化済", "受注", "協業", "失注"] as const;
 export type LeadPhase = (typeof LEAD_PHASES)[number];
 
 /** 案件のフェーズ。受注で顧客になり、失注で失注一覧に出る */
@@ -61,6 +64,8 @@ export const CUSTOMER_STATUSES = ["稼働", "停止", "解約"] as const;
 
 /** 案件に進んだとみなすフェーズ。ここに入ったら案件を作る */
 export const PHASE_MAKES_DEAL: LeadPhase = "案件化済";
+/** リード側で受注とみなすフェーズ。案件を受注にして顧客まで作る */
+export const LEAD_PHASE_WON: LeadPhase = "受注";
 /** 顧客になったとみなすフェーズ */
 export const PHASE_MAKES_CUSTOMER: DealPhase = "受注";
 /** 商談中とみなすフェーズ。パイプラインの母数 */
