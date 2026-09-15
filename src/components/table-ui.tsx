@@ -17,6 +17,7 @@ export const ACCENT = "#9e8d70";
  *   水色    着手した
  *   オレンジ 山場
  *   黄      成果
+ *   シアン  受注（成果の先。水色より濃く、初回面談・提案と見分ける）
  *   紫      本筋から外れた形（協業・留守番電話）
  *   赤      手が止まっている
  *
@@ -32,6 +33,7 @@ export const TONE = {
   violet:
     "bg-violet-200 text-violet-900 ring-violet-300 dark:bg-violet-500/25 dark:text-violet-100 dark:ring-violet-400/40",
   red: "bg-red-200 text-red-900 ring-red-300 dark:bg-red-500/25 dark:text-red-100 dark:ring-red-400/40",
+  cyan: "bg-cyan-300 text-cyan-900 ring-cyan-400 dark:bg-cyan-400/25 dark:text-cyan-100 dark:ring-cyan-400/40",
 } as const;
 
 /**
@@ -47,6 +49,7 @@ export const FILL = {
   violet: "bg-violet-300/40 dark:bg-violet-500/15",
   gray: "bg-neutral-300/40 dark:bg-neutral-500/15",
   red: "bg-red-300/40 dark:bg-red-500/15",
+  cyan: "bg-cyan-300/40 dark:bg-cyan-400/15",
   none: "",
 } as const;
 

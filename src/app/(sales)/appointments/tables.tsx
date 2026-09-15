@@ -27,7 +27,7 @@ const LEAD_PHASE_TONE: Record<LeadPhase, string> = {
   リード: TONE.gray,
   初回面談: TONE.sky,
   案件化済: TONE.yellow,
-  受注: TONE.red,
+  受注: TONE.cyan,
   協業: TONE.violet,
   失注: TONE.gray,
 };
@@ -36,7 +36,7 @@ const LEAD_PHASE_FILL: Record<LeadPhase, string> = {
   リード: FILL.none,
   初回面談: FILL.none,
   案件化済: FILL.yellow,
-  受注: FILL.red,
+  受注: FILL.cyan,
   協業: FILL.violet,
   失注: FILL.gray,
 };
@@ -45,7 +45,7 @@ const DEAL_PHASE_TONE: Record<DealPhase, string> = {
   提案: TONE.sky,
   見積: TONE.orange,
   クロージング: TONE.orange,
-  受注: TONE.red,
+  受注: TONE.cyan,
   失注: TONE.gray,
 };
 
@@ -53,7 +53,7 @@ const DEAL_PHASE_FILL: Record<DealPhase, string> = {
   提案: FILL.none,
   見積: FILL.none,
   クロージング: FILL.orange,
-  受注: FILL.red,
+  受注: FILL.cyan,
   失注: FILL.gray,
 };
 
